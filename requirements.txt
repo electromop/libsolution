@@ -1,0 +1,20 @@
+fastapi
+uvicorn
+jinja2
+python-multipart
+pydantic
+requests
+sqlalchemy
+databases
+asyncpg
+passlib[bcrypt]
+python-dotenv
+websockets
+starlette
+pandas
+numpy
+pyjwt
+# Для логирования
+# logging встроен в стандартную библиотеку, не требуется
+# Для работы с SQLite (по умолчанию в Python, но можно явно указать)
+aiosqlite
