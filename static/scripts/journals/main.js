@@ -12,7 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const wsManager = new WebSocketManager(
-        `ws://${location.host}/ws/journal/${journalId}`,
+        `wss://${location.host}/ws/journal/${journalId}`,
         editorManager,
         userListManager,
         cursorManager
