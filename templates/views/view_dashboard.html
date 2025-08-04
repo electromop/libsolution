@@ -1,0 +1,577 @@
+
+
+{# view_dashboard.html #}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Дэшборды</h2>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createChartModal">
+      <i class="bi bi-plus-lg"></i> Новый график
+    </button>
+  </div>
+
+  <div id="chartsList" class="row g-4">
+    <!-- Сюда будут подгружаться карточки графиков с графиками -->
+  </div>
+</div>
+{% include "modals/create_chart_modal.html" %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Bootstrap JS (для модалок) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const chartsList = document.getElementById('chartsList');
+  const chartForm = document.getElementById('chartForm');
+  const createChartModalEl = document.getElementById('createChartModal');
+  const createChartModal = new bootstrap.Modal(createChartModalEl);
+  const typeSelect = document.getElementById('typeSelect');
+  const xFieldSelect = document.getElementById('xField');
+  const yFieldsSelect = document.getElementById('yFields');
+  const filterBuilder = document.getElementById('filterBuilder');
+  const addFilterRowBtn = document.getElementById('addFilterRow');
+  const filtersTextarea = document.getElementById('filters');
+  let fieldsCache = {}; // Кэш полей по type_id
+  let chartInstances = {}; // id -> Chart.js instance
+  let filterFields = []; // Список полей для фильтрации
+
+  // Типы операторов по типу поля
+  const FILTER_OPERATORS_BY_TYPE = {
+    string: [
+      { value: 'eq', label: 'равно' },
+      { value: 'ne', label: 'не равно' },
+      { value: 'contains', label: 'содержит' },
+      { value: 'startswith', label: 'начинается с' },
+      { value: 'endswith', label: 'заканчивается на' }
+    ],
+    number: [
+      { value: 'eq', label: 'равно' },
+      { value: 'ne', label: 'не равно' },
+      { value: 'lt', label: 'меньше' },
+      { value: 'lte', label: 'меньше или равно' },
+      { value: 'gt', label: 'больше' },
+      { value: 'gte', label: 'больше или равно' }
+    ],
+    integer: [
+      { value: 'eq', label: 'равно' },
+      { value: 'ne', label: 'не равно' },
+      { value: 'lt', label: 'меньше' },
+      { value: 'lte', label: 'меньше или равно' },
+      { value: 'gt', label: 'больше' },
+      { value: 'gte', label: 'больше или равно' }
+    ],
+    date: [
+      { value: 'eq', label: 'равно' },
+      { value: 'ne', label: 'не равно' },
+      { value: 'lt', label: 'до' },
+      { value: 'lte', label: 'до и включая' },
+      { value: 'gt', label: 'после' },
+      { value: 'gte', label: 'после и включая' }
+    ],
+    datetime: [
+      { value: 'eq', label: 'равно' },
+      { value: 'ne', label: 'не равно' },
+      { value: 'lt', label: 'до' },
+      { value: 'lte', label: 'до и включая' },
+      { value: 'gt', label: 'после' },
+      { value: 'gte', label: 'после и включая' }
+    ],
+    boolean: [
+      { value: 'eq', label: 'равно' },
+      { value: 'ne', label: 'не равно' }
+    ]
+  };
+
+  // Загрузка списка графиков и их данных
+  async function loadCharts() {
+    chartsList.innerHTML = '<div class="text-center py-5">Загрузка...</div>';
+    try {
+      const resp = await fetch('/charts/config/');
+      if (!resp.ok) throw new Error('Ошибка загрузки');
+      const charts = await resp.json();
+      if (!charts.length) {
+        chartsList.innerHTML = '<div class="text-center text-muted py-5">Нет сохранённых графиков</div>';
+        return;
+      }
+      chartsList.innerHTML = '';
+      for (const chart of charts) {
+        const card = createChartCard(chart);
+        chartsList.appendChild(card);
+        await renderChartInCard(chart, card);
+      }
+    } catch (err) {
+      chartsList.innerHTML = `<div class="text-danger text-center py-5">${err.message || 'Ошибка загрузки'}</div>`;
+    }
+  }
+
+  // Создание карточки графика с контейнером для графика
+  function createChartCard(chart) {
+    const col = document.createElement('div');
+    col.className = 'col-12 col-md-6 col-lg-12';
+    col.innerHTML = `
+      <div class="card shadow-sm h-100">
+        <div class="card-body d-flex flex-column">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="card-title mb-0">${escapeHtml(chart.name)}</h5>
+            <button class="btn btn-outline-danger btn-sm" data-action="delete" data-id="${chart.id}" title="Удалить">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+          <div class="mb-2 d-flex gap-3 align-items-center small text-muted">
+            <span><span class="fw-semibold">Тип:</span> ${escapeHtml(chart.chart_type)}</span>
+            <span><span class="fw-semibold">X:</span> ${escapeHtml(chart.x_field)}</span>
+            <span><span class="fw-semibold">Y:</span> ${(chart.y_fields || []).map(escapeHtml).join(', ')}</span>
+          </div>
+          <div class="flex-grow-1 d-flex align-items-center justify-content-center" style="min-height:320px;">
+            <div class="w-100">
+              <canvas id="chart-canvas-${chart.id}" style="max-height:300px;"></canvas>
+              <div class="text-center text-muted" id="chart-loading-${chart.id}" style="position:absolute;left:0;right:0;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    // Обработчик удаления
+    col.querySelector('[data-action="delete"]').onclick = () => deleteChart(chart.id);
+    return col;
+  }
+
+  // Рендеринг графика в карточке
+  async function renderChartInCard(chart, card) {
+    const canvas = card.querySelector(`#chart-canvas-${chart.id}`);
+    const loadingDiv = card.querySelector(`#chart-loading-${chart.id}`);
+    loadingDiv.textContent = 'Загрузка данных...';
+    if (chartInstances[chart.id]) {
+      chartInstances[chart.id].destroy();
+      chartInstances[chart.id] = null;
+    }
+    try {
+      const resp = await fetch('/charts/data/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          item_id: null,
+          tag_id: null,
+          chart_type: chart.chart_type,
+          x_field: chart.x_field,
+          y_fields: chart.y_fields,
+          filters: chart.filters
+        })
+      });
+      if (!resp.ok) throw new Error('Ошибка загрузки данных');
+      const data = await resp.json();
+      loadingDiv.textContent = '';
+      const datasets = [];
+      for (const y of chart.y_fields) {
+        datasets.push({
+          label: y,
+          data: (data.y && data.y[y]) ? data.y[y] : [],
+          fill: false,
+          borderColor: getRandomColor(),
+          backgroundColor: getRandomColor(),
+          tension: 0.2
+        });
+      }
+      chartInstances[chart.id] = new Chart(canvas.getContext('2d'), {
+        type: chart.chart_type,
+        data: {
+          labels: data.x,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: 'top' },
+            title: { display: false }
+          }
+        }
+      });
+    } catch (err) {
+      loadingDiv.textContent = err.message || 'Ошибка загрузки данных';
+    }
+  }
+
+  // Удалить график
+  async function deleteChart(id) {
+    if (!confirm('Удалить этот график?')) return;
+    try {
+      const resp = await fetch(`/charts/config/${id}`, { method: 'DELETE' });
+      if (!resp.ok) throw new Error('Ошибка удаления');
+      await loadCharts();
+    } catch (err) {
+      alert(err.message || 'Ошибка удаления');
+    }
+  }
+
+  // Случайный цвет для графика
+  function getRandomColor() {
+    const colors = [
+      '#0d6efd', '#6610f2', '#6f42c1', '#d63384', '#dc3545',
+      '#fd7e14', '#ffc107', '#198754', '#20c997', '#0dcaf0'
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
+
+  // Экранирование html
+  function escapeHtml(text) {
+    if (!text) return '';
+    return text.toString().replace(/[&<>"']/g, function(m) {
+      switch (m) {
+        case '&': return '&amp;';
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '"': return '&quot;';
+        case "'": return '&#39;';
+      }
+    });
+  }
+
+  // Загрузка типов веществ
+  async function loadTypes() {
+    typeSelect.innerHTML = '<option value="">Загрузка...</option>';
+    try {
+      const resp = await fetch('/types/');
+      if (!resp.ok) throw new Error('Ошибка загрузки типов');
+      const types = await resp.json();
+      typeSelect.innerHTML = '<option value="">Выберите тип...</option>';
+      for (const t of types) {
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.name;
+        typeSelect.appendChild(opt);
+      }
+    } catch (err) {
+      typeSelect.innerHTML = `<option value="">Ошибка загрузки</option>`;
+    }
+  }
+
+  // Загрузка полей для выбранного типа вещества
+  async function loadFieldsForType(type_id) {
+    if (!type_id) {
+      xFieldSelect.innerHTML = '<option value="">Выберите поле...</option>';
+      yFieldsSelect.innerHTML = '';
+      filterFields = [];
+      renderFilterBuilder();
+      return;
+    }
+    if (fieldsCache[type_id]) {
+      fillFieldSelects(fieldsCache[type_id]);
+      filterFields = fieldsCache[type_id];
+      renderFilterBuilder();
+      return;
+    }
+    xFieldSelect.innerHTML = '<option value="">Загрузка...</option>';
+    yFieldsSelect.innerHTML = '';
+    try {
+      const resp = await fetch(`/charts/fields/?type_id=${encodeURIComponent(type_id)}`);
+      if (!resp.ok) throw new Error('Ошибка загрузки полей');
+      const data = await resp.json();
+      fieldsCache[type_id] = data.fields;
+      fillFieldSelects(data.fields);
+      filterFields = data.fields;
+      renderFilterBuilder();
+    } catch (err) {
+      xFieldSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
+      yFieldsSelect.innerHTML = '';
+      filterFields = [];
+      renderFilterBuilder();
+    }
+  }
+
+  // Заполнение селектов X и Y полями
+  function fillFieldSelects(fields) {
+    xFieldSelect.innerHTML = '<option value="">Выберите поле...</option>';
+    yFieldsSelect.innerHTML = '';
+    for (const f of fields) {
+      const optX = document.createElement('option');
+      optX.value = f.name;
+      optX.textContent = f.label || f.name;
+      xFieldSelect.appendChild(optX);
+
+      const optY = document.createElement('option');
+      optY.value = f.name;
+      optY.textContent = f.label || f.name;
+      yFieldsSelect.appendChild(optY);
+    }
+  }
+
+  // --- Визуальный конструктор фильтра ---
+
+  // Список фильтров (каждый фильтр: {field, op, value})
+  let filterRows = [];
+
+  // Получить тип поля по имени
+  function getFieldType(fieldName) {
+    const f = filterFields.find(f => f.name === fieldName);
+    if (!f) return 'string';
+    // Возможные типы: string, number, integer, date, datetime, boolean
+    if (f.type) return f.type;
+    // Попробуем угадать по имени
+    if (fieldName.match(/_at$/) || fieldName.match(/date/)) return 'date';
+    return 'string';
+  }
+
+  // Получить список операторов для поля
+  function getOperatorsForField(fieldName) {
+    const type = getFieldType(fieldName);
+    return FILTER_OPERATORS_BY_TYPE[type] || FILTER_OPERATORS_BY_TYPE['string'];
+  }
+
+  // Получить input type для поля
+  function getInputTypeForField(fieldName) {
+    const type = getFieldType(fieldName);
+    if (type === 'number' || type === 'integer') return 'number';
+    if (type === 'date' || type === 'datetime') return 'date';
+    if (type === 'boolean') return 'select';
+    return 'text';
+  }
+
+  // Рендер визуального конструктора фильтра
+  function renderFilterBuilder() {
+    filterBuilder.innerHTML = '';
+    if (!filterFields.length) {
+      filterRows = [];
+      return;
+    }
+    filterRows.forEach((row, idx) => {
+      const div = document.createElement('div');
+      div.className = 'd-flex align-items-center mb-2 filter-row';
+      // Поле
+      const fieldSelect = document.createElement('select');
+      fieldSelect.className = 'form-select form-select-sm me-2';
+      fieldSelect.style.width = '180px';
+      filterFields.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f.name;
+        opt.textContent = f.label || f.name;
+        fieldSelect.appendChild(opt);
+      });
+      fieldSelect.value = row.field;
+      fieldSelect.onchange = function() {
+        row.field = this.value;
+        // Сбросить оператор, если не подходит
+        const ops = getOperatorsForField(row.field);
+        if (!ops.find(o => o.value === row.op)) {
+          row.op = ops[0].value;
+        }
+        // Сбросить значение, если тип изменился
+        row.value = '';
+        renderFilterBuilder();
+        updateFiltersTextarea();
+      };
+      // Оператор
+      const opSelect = document.createElement('select');
+      opSelect.className = 'form-select form-select-sm me-2';
+      opSelect.style.width = '140px';
+      const ops = getOperatorsForField(row.field);
+      ops.forEach(op => {
+        const opt = document.createElement('option');
+        opt.value = op.value;
+        opt.textContent = op.label;
+        opSelect.appendChild(opt);
+      });
+      opSelect.value = row.op;
+      opSelect.onchange = function() {
+        row.op = this.value;
+        updateFiltersTextarea();
+      };
+      // Значение
+      let valueInput;
+      const inputType = getInputTypeForField(row.field);
+      if (inputType === 'select') {
+        valueInput = document.createElement('select');
+        valueInput.className = 'form-select form-select-sm me-2';
+        valueInput.style.width = '120px';
+        [
+          {value: 'true', label: 'Да'},
+          {value: 'false', label: 'Нет'}
+        ].forEach(optData => {
+          const opt = document.createElement('option');
+          opt.value = optData.value;
+          opt.textContent = optData.label;
+          valueInput.appendChild(opt);
+        });
+        valueInput.value = row.value === true || row.value === 'true' ? 'true' : 'false';
+        valueInput.onchange = function() {
+          row.value = this.value;
+          updateFiltersTextarea();
+        };
+      } else {
+        valueInput = document.createElement('input');
+        valueInput.type = inputType;
+        valueInput.className = 'form-control form-control-sm me-2';
+        valueInput.style.width = '180px';
+        valueInput.value = row.value;
+        valueInput.placeholder = 'Значение';
+        valueInput.oninput = function() {
+          row.value = this.value;
+          updateFiltersTextarea();
+        };
+      }
+      // Кнопка удаления
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn btn-outline-danger btn-sm';
+      delBtn.innerHTML = '<i class="bi bi-x"></i>';
+      delBtn.onclick = function() {
+        filterRows.splice(idx, 1);
+        renderFilterBuilder();
+        updateFiltersTextarea();
+      };
+      div.appendChild(fieldSelect);
+      div.appendChild(opSelect);
+      div.appendChild(valueInput);
+      div.appendChild(delBtn);
+      filterBuilder.appendChild(div);
+    });
+    updateFiltersTextarea();
+  }
+
+  // Добавить новую строку фильтра
+  addFilterRowBtn.addEventListener('click', function() {
+    if (!filterFields.length) return;
+    const firstField = filterFields[0];
+    const ops = getOperatorsForField(firstField.name);
+    filterRows.push({
+      field: firstField.name,
+      op: ops[0].value,
+      value: ''
+    });
+    renderFilterBuilder();
+    updateFiltersTextarea();
+  });
+
+  // Обновить textarea с фильтрами на основе визуального конструктора
+  function updateFiltersTextarea() {
+    // Собираем фильтры в объект
+    const filterObj = {};
+    filterRows.forEach(row => {
+      if (row.value === '' || row.value === null || typeof row.value === 'undefined') return;
+      // Ключ формируем как field_operator, например: "created_at_gte"
+      const key = row.field + '_' + row.op;
+      // Преобразуем значение для boolean
+      if (getFieldType(row.field) === 'boolean') {
+        filterObj[key] = row.value === 'true' || row.value === true;
+      } else if (getFieldType(row.field) === 'number' || getFieldType(row.field) === 'integer') {
+        filterObj[key] = row.value === '' ? null : Number(row.value);
+      } else {
+        filterObj[key] = row.value;
+      }
+    });
+    if (Object.keys(filterObj).length) {
+      filtersTextarea.value = JSON.stringify(filterObj, null, 2);
+    } else {
+      filtersTextarea.value = '';
+    }
+  }
+
+  // Если пользователь вручную меняет textarea, парсим в визуальный конструктор
+  filtersTextarea.addEventListener('input', function() {
+    let val = filtersTextarea.value.trim();
+    if (!val) {
+      filterRows = [];
+      renderFilterBuilder();
+      return;
+    }
+    try {
+      const obj = JSON.parse(val);
+      filterRows = [];
+      for (const key in obj) {
+        // Ключ вида field_op
+        const m = key.match(/^(.+?)_([a-z]+)$/);
+        if (m) {
+          const field = m[1];
+          const op = m[2];
+          let value = obj[key];
+          // Для boolean приводим к строке
+          if (getFieldType(field) === 'boolean') {
+            value = value ? 'true' : 'false';
+          }
+          filterRows.push({
+            field: field,
+            op: op,
+            value: value
+          });
+        }
+      }
+      renderFilterBuilder();
+    } catch {
+      // Невалидный JSON — не трогаем визуальный конструктор
+    }
+  });
+
+  // Сброс формы при открытии модалки
+  createChartModalEl.addEventListener('show.bs.modal', function() {
+    chartForm.reset();
+    loadTypes();
+    xFieldSelect.innerHTML = '<option value="">Выберите поле...</option>';
+    yFieldsSelect.innerHTML = '';
+    filterFields = [];
+    filterRows = [];
+    renderFilterBuilder();
+    filtersTextarea.value = '';
+  });
+
+  // При выборе типа вещества — подгружаем поля
+  typeSelect.addEventListener('change', function() {
+    loadFieldsForType(typeSelect.value);
+  });
+
+  // Обработка отправки формы создания графика
+  chartForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const name = chartForm.name.value.trim();
+    const chart_type = chartForm.chart_type.value;
+    const x_field = chartForm.x_field.value;
+    // Получаем выбранные поля Y
+    const y_fields = Array.from(yFieldsSelect.selectedOptions).map(opt => opt.value).filter(Boolean);
+    let filters = chartForm.filters.value.trim();
+    if (filters) {
+      try {
+        filters = JSON.parse(filters);
+      } catch {
+        alert('Фильтры должны быть в формате JSON');
+        return;
+      }
+    } else {
+      filters = null;
+    }
+    if (!typeSelect.value) {
+      alert('Выберите тип вещества');
+      return;
+    }
+    if (!x_field || !y_fields.length) {
+      alert('Выберите поля для осей X и Y');
+      return;
+    }
+    try {
+      const resp = await fetch('/charts/config/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          name,
+          chart_type,
+          x_field,
+          y_fields,
+          filters
+        })
+      });
+      if (!resp.ok) {
+        let errMsg = 'Ошибка создания графика';
+        try {
+          const err = await resp.json();
+          errMsg = err.detail || errMsg;
+        } catch {}
+        throw new Error(errMsg);
+      }
+      createChartModal.hide();
+      await loadCharts();
+    } catch (err) {
+      alert(err.message || 'Ошибка создания графика');
+    }
+  });
+
+  // Инициализация
+  loadCharts();
+});
+</script>

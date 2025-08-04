@@ -1,0 +1,39 @@
+{# journals.html (главная страница) #}
+{% extends "base_journals.html" %}
+{% block title %}Журналы{% endblock %}
+{% block main %}
+    <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4" style="height: 100vh; display: flex; flex-direction: column; overflow: hidden;">
+        <div style="position: relative; flex-shrink: 0;">
+            {% include "utils/toolbar_folders.html" %}
+        </div>
+        {% include "content/folders.html" %}
+    </main>
+    <!-- Модальное окно для создания журнала -->
+<div class="modal fade" id="createJournalModal" tabindex="-1" aria-labelledby="createJournalModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <form class="modal-content" method="post" action="/journals/create">
+        <div class="modal-header">
+          <h5 class="modal-title" id="createJournalModalLabel">Создать журнал</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="journalName" class="form-label">Название журнала</label>
+            <input type="text" class="form-control" id="journalName" name="filename" required>
+          </div>
+          <div class="mb-3">
+            <label for="journalFolder" class="form-label">Папка</label>
+            <select class="form-select" id="journalFolder" name="folder_id">
+              <option value="">Без папки</option>
+              <!-- Папки будут подгружаться через JS -->
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-primary">Создать</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}

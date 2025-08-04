@@ -1,0 +1,43 @@
+{# document.html #}
+<style>
+.mini-excel-table {
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+.mini-excel-table td, .mini-excel-table th {
+  border: 1px solid #ccc;
+  height: 30px;
+  text-align: center;
+}
+.mini-excel-table input {
+  width: 95%;
+  border: none;
+  outline: none;
+  text-align: center;
+}
+.col-resize {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+}
+td.pointer-mode input {
+  cursor: pointer;
+}
+</style>
+<div class="d-flex" style="gap: 24px;">
+    <div id="notion-like-document" class="notion-document mt-2" style="flex: 2 1 0; overflow-y: auto; min-width: 0;">
+        <div class="d-flex align-items-center mb-3">
+            <i class="bi bi-file-earmark-text me-2"></i>
+            <h2 contenteditable="true" class="mb-0" id="filename" placeholder="Введите название документа...">{{ document_title or "Название документа" }}</h2>
+        </div>
+        <div id="document-content" class="document-content" style="max-height: 85vh; overflow-y: auto;">
+            <div class="notion-block border border-0" contenteditable="true" id="editor" placeholder="Начните писать здесь..."">
+                {{ document_content|safe }}
+            </div>
+        </div>
+    </div>
+</div>

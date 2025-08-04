@@ -1,0 +1,11 @@
+{# journals.html (главная страница) #}
+{% extends "base_journals.html" %}
+{% block title %}Журналы{% endblock %}
+{% block main %}
+    <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4" style="height: 100vh; display: flex; flex-direction: column; overflow: hidden;">
+        <div style="position: relative; flex-shrink: 0;">
+            {% include "utils/toolbar_journals.html" %}
+        </div>
+        {% include "content/document.html" %}
+    </main>
+{% endblock %}

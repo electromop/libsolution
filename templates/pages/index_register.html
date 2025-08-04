@@ -1,0 +1,188 @@
+{% extends "base_auth.html" %}
+{% block main %}
+<div class="col-md-6 offset-md-3 mt-5">
+    <div class="card shadow">
+        <div class="card-body">
+            <h3 class="card-title mb-4 text-center">Регистрация</h3>
+            <form method="post" action="/register" id="registerForm" autocomplete="off">
+                <div class="mb-3">
+                    <label for="email" class="form-label">Почта</label>
+                    <input type="email" class="form-control" id="email" name="email" required autofocus>
+                </div>
+                <div class="mb-3">
+                    <label for="password" class="form-label">Пароль</label>
+                    <div class="input-group">
+                        <input type="password" class="form-control" id="password" name="password" required aria-describedby="passwordHelp">
+                        <button class="btn btn-outline-secondary" type="button" id="togglePassword" tabindex="-1" title="Показать/скрыть пароль">
+                            <i class="bi bi-eye" id="togglePasswordIcon"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary" type="button" id="generatePassword" tabindex="-1" title="Сгенерировать пароль">
+                            <i class="bi bi-shuffle"></i>
+                        </button>
+                    </div>
+                    <div id="passwordHelp" class="form-text text-muted">
+                        Минимум 8 символов, обязательно цифры и спецсимволы.
+                    </div>
+                    <ul class="list-unstyled mb-0" id="passwordRequirements" style="font-size:0.97em;">
+                        <li id="req-length" class="text-danger">Минимум 8 символов</li>
+                        <li id="req-digit" class="text-danger">Хотя бы одна цифра</li>
+                        <li id="req-special" class="text-danger">Хотя бы один спецсимвол</li>
+                    </ul>
+                </div>
+                <div class="mb-3">
+                    <label for="password2" class="form-label">Повторите пароль</label>
+                    <div class="input-group">
+                        <input type="password" class="form-control" id="password2" name="password2" required>
+                        <button class="btn btn-outline-secondary" type="button" id="togglePassword2" tabindex="-1" title="Показать/скрыть пароль">
+                            <i class="bi bi-eye" id="togglePassword2Icon"></i>
+                        </button>
+                    </div>
+                    <div id="passwordMatch" class="form-text text-danger" style="display:none;"></div>
+                </div>
+                {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+                {% endif %}
+                {% if success %}
+                <div class="alert alert-success">{{ success }}</div>
+                {% endif %}
+                <button type="submit" class="btn btn-primary w-100">Зарегистрироваться</button>
+            </form>
+            <div class="mt-3 text-center">
+                <a href="/login">Уже есть аккаунт? Войти</a>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    // Проверка требований к паролю
+    function checkPasswordRequirements(password) {
+        return {
+            length: password.length >= 8,
+            digit: /\d/.test(password),
+            special: /[^A-Za-zА-Яа-я0-9]/.test(password)
+        };
+    }
+
+    function updatePasswordRequirements(password) {
+        const reqs = checkPasswordRequirements(password);
+        document.getElementById('req-length').className = reqs.length ? 'text-success' : 'text-danger';
+        document.getElementById('req-digit').className = reqs.digit ? 'text-success' : 'text-danger';
+        document.getElementById('req-special').className = reqs.special ? 'text-success' : 'text-danger';
+    }
+
+    function validatePasswords() {
+        const password = document.getElementById("password").value;
+        const password2 = document.getElementById("password2").value;
+        const matchDiv = document.getElementById("passwordMatch");
+        if (password2.length > 0) {
+            if (password !== password2) {
+                matchDiv.textContent = "Пароли не совпадают.";
+                matchDiv.style.display = "block";
+            } else {
+                matchDiv.textContent = "";
+                matchDiv.style.display = "none";
+            }
+        } else {
+            matchDiv.textContent = "";
+            matchDiv.style.display = "none";
+        }
+    }
+
+    function isPasswordValid(password) {
+        const reqs = checkPasswordRequirements(password);
+        return reqs.length && reqs.digit && reqs.special;
+    }
+
+    // Генерация пароля
+    function generatePassword() {
+        const length = 12;
+        const digits = "0123456789";
+        const specials = "!@#$%^&*()_+-=,.?[]{}";
+        const lowers = "abcdefghijklmnopqrstuvwxyz";
+        const uppers = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const all = digits + specials + lowers + uppers;
+
+        let password = "";
+        // Гарантируем наличие хотя бы одного символа каждого типа
+        password += digits[Math.floor(Math.random() * digits.length)];
+        password += specials[Math.floor(Math.random() * specials.length)];
+        password += lowers[Math.floor(Math.random() * lowers.length)];
+        password += uppers[Math.floor(Math.random() * uppers.length)];
+        for (let i = 4; i < length; i++) {
+            password += all[Math.floor(Math.random() * all.length)];
+        }
+        // Перемешиваем
+        password = password.split('').sort(() => 0.5 - Math.random()).join('');
+        return password;
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+        const password = document.getElementById("password");
+        const password2 = document.getElementById("password2");
+        const form = document.getElementById("registerForm");
+
+        // Интерактивная проверка пароля
+        password.addEventListener("input", function() {
+            updatePasswordRequirements(password.value);
+            validatePasswords();
+        });
+        password2.addEventListener("input", function() {
+            validatePasswords();
+        });
+
+        // Кнопка показать/скрыть пароль
+        document.getElementById("togglePassword").addEventListener("click", function() {
+            if (password.type === "password") {
+                password.type = "text";
+                document.getElementById("togglePasswordIcon").className = "bi bi-eye-slash";
+            } else {
+                password.type = "password";
+                document.getElementById("togglePasswordIcon").className = "bi bi-eye";
+            }
+        });
+        document.getElementById("togglePassword2").addEventListener("click", function() {
+            if (password2.type === "password") {
+                password2.type = "text";
+                document.getElementById("togglePassword2Icon").className = "bi bi-eye-slash";
+            } else {
+                password2.type = "password";
+                document.getElementById("togglePassword2Icon").className = "bi bi-eye";
+            }
+        });
+
+        // Кнопка сгенерировать пароль
+        document.getElementById("generatePassword").addEventListener("click", function() {
+            const newPass = generatePassword();
+            password.value = newPass;
+            password2.value = newPass;
+            updatePasswordRequirements(newPass);
+            validatePasswords();
+        });
+
+        // Проверка при отправке формы
+        form.addEventListener("submit", function(e) {
+            updatePasswordRequirements(password.value);
+            validatePasswords();
+            // Проверка совпадения паролей
+            if (password.value !== password2.value) {
+                const matchDiv = document.getElementById("passwordMatch");
+                matchDiv.textContent = "Пароли не совпадают.";
+                matchDiv.style.display = "block";
+                password2.focus();
+                e.preventDefault();
+                return;
+            }
+            // Проверка сложности пароля
+            if (!isPasswordValid(password.value)) {
+                e.preventDefault();
+                return;
+            }
+        });
+
+        // Инициализация подсветки требований при загрузке
+        updatePasswordRequirements(password.value);
+    });
+</script>
+<!-- Bootstrap Icons (если не подключены в base_auth.html) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+{% endblock %}

@@ -1,0 +1,694 @@
+{# view_item.html #}
+<div class="container py-4">
+  <div class="row mb-3">
+    <div class="col-12 d-flex align-items-center gap-3">
+      <a id="backToTypeBtn" href="#" class="btn btn-outline-secondary btn-sm" title="Назад к списку">
+        <i class="bi bi-arrow-left"></i> К списку
+      </a>
+      <div class="flex-grow-1 d-flex align-items-center justify-content-between">
+        <h2 id="itemTitle" class="mb-0 fw-semibold text-dark" style="font-size: 2rem;">
+          <!-- Название вещества и тип появятся здесь -->
+        </h2>
+        <div class="d-flex align-items-center gap-2 ms-3">
+          <span id="currentQuantityBlock" class="me-3" style="font-size: 1.1rem;">
+            <!-- Текущее количество появится здесь -->
+          </span>
+          <a id="editItemBtn" href="#" class="btn btn-outline-primary">
+            <i class="bi bi-pencil"></i> Редактировать
+          </a>
+          <form id="deleteItemForm" method="post" action="#" onsubmit="return confirm('Удалить это вещество?');" class="mb-0">
+            <button type="submit" class="btn btn-outline-danger">
+              <i class="bi bi-trash"></i> Удалить
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row"  style="overflow-y: auto; max-height: 85vh;">
+    <div class="col-lg-8">
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white fw-bold">
+          Основная информация
+        </div>
+        <div class="card-body">
+          <table class="table table-borderless mb-0" id="itemFieldsTable">
+            <tbody>
+              <!-- Данные по полям будут вставлены через JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card shadow-sm mb-4 d-none" id="itemDescriptionCard">
+        <div class="card-header bg-white fw-bold">
+          Описание
+        </div>
+        <div class="card-body">
+          <div class="text-body" id="itemDescriptionText">
+            <!-- Описание появится здесь -->
+          </div>
+        </div>
+      </div>
+      <!-- Блок списания/пополнения -->
+      <div class="card shadow-sm mb-4" id="quantityChangeCard">
+        <div class="card-header bg-white fw-bold">
+          Списание / Пополнение
+        </div>
+        <div class="card-body">
+          <form id="quantityChangeForm" class="row g-2">
+            <div class="col-12 col-md-4">
+              <select class="form-select" id="changeType" required>
+                <option value="1">Пополнить</option>
+                <option value="0">Списать</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-4">
+              <input type="number" step="any" min="0.0001" class="form-control" id="changeAmount" placeholder="Количество" required>
+            </div>
+            <div class="col-12 col-md-4">
+              <input type="text" class="form-control" id="changeReason" placeholder="Причина (необязательно)">
+            </div>
+            <div class="col-12 mt-2">
+              <button type="submit" class="btn btn-success w-100">
+                <i class="bi bi-plus-slash-minus"></i> Выполнить операцию
+              </button>
+            </div>
+          </form>
+          <div id="quantityChangeMsg" class="mt-2"></div>
+        </div>
+      </div>
+      <!-- История изменений количества -->
+      <div class="card shadow-sm mb-4" id="quantityHistoryCard">
+        <div class="card-header bg-white fw-bold">
+          История изменений количества
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0" id="quantityHistoryTable">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Операция</th>
+                <th>Количество</th>
+                <th>Причина</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- История будет подгружена через JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <!-- Конец блока списания/пополнения -->
+
+      <!-- Блок комментариев -->
+      <div class="card shadow-sm mb-4" id="commentsCard">
+        <div class="card-header bg-white fw-bold">
+          Комментарии
+        </div>
+        <div class="card-body">
+          <form id="addCommentForm" class="mb-3">
+            <div class="input-group">
+              <input type="text" class="form-control" id="commentText" placeholder="Добавить комментарий..." maxlength="1000" required>
+              <button class="btn btn-primary" type="submit">Отправить</button>
+            </div>
+          </form>
+          <div id="commentsList">
+            <!-- Комментарии будут подгружены через JS -->
+          </div>
+        </div>
+      </div>
+      <!-- Конец блока комментариев -->
+
+    </div>
+    <div class="col-lg-4">
+      <div class="card shadow-sm">
+        <div class="card-header bg-white fw-bold">
+          Метаданные
+        </div>
+        <div class="card-body">
+          <dl class="row mb-0" id="itemMetaData">
+            <!-- Метаданные появятся через JS -->
+          </dl>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Модальное окно для редактирования (будет добавлено динамически) -->
+
+<script>
+document.addEventListener('DOMContentLoaded', async function() {
+  // Получаем id вещества из url (например, /item/123/ или ?item_id=123)
+  function getItemIdFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('item_id')) {
+      return params.get('item_id');
+    }
+    const match = window.location.pathname.match(/\/item\/(\w+)\//);
+    if (match) {
+      return match[1];
+    }
+    return null;
+  }
+
+  // Функция для преобразования даты из UTC в локальный часовой пояс пользователя
+  function formatDateTimeLocal(dt) {
+    if (!dt) return '<span class="text-muted">—</span>';
+    // Преобразуем строку в Date, предполагая что dt в формате ISO или совместимом с Date
+    // Date конструктор интерпретирует ISO-строку как UTC
+    const d = new Date(dt);
+    if (isNaN(d)) return dt;
+    return d.toLocaleString('ru-RU');
+  }
+
+  // Для дат только с датой (без времени)
+  function formatDateLocal(dt) {
+    if (!dt) return '<span class="text-muted">—</span>';
+    const d = new Date(dt);
+    if (isNaN(d)) return dt;
+    return d.toLocaleDateString('ru-RU');
+  }
+
+  // --- Текущее количество ---
+  let currentQuantity = 0;
+  let currentQuantityUnit = '';
+  const currentQuantityBlock = document.getElementById('currentQuantityBlock');
+  function renderCurrentQuantity() {
+    let unit = currentQuantityUnit ? ` <span class="text-muted" style="font-size:0.95em;">${currentQuantityUnit}</span>` : '';
+    currentQuantityBlock.innerHTML = `<span class="fw-bold">Текущее количество:</span> <span id="currentQuantityValue">${currentQuantity}</span>${unit}`;
+  }
+
+  const itemId = getItemIdFromUrl();
+  if (!itemId) {
+    document.getElementById('itemTitle').textContent = 'Вещество не найдено';
+    return;
+  }
+
+  // Получаем данные вещества с API
+  let itemData = null;
+  try {
+    const res = await fetch(`/items/${itemId}`);
+    if (!res.ok) throw new Error('Ошибка загрузки');
+    itemData = await res.json();
+  } catch (e) {
+    document.getElementById('itemTitle').textContent = 'Ошибка загрузки вещества';
+    return;
+  }
+
+  // Назад к типу
+  document.getElementById('backToTypeBtn').href = `/substance?type_id=${itemData.type.id}`;
+
+  // Название и тип
+  const nameField = itemData.name;
+  let itemName = '';
+  if (nameField && itemData.name) {
+    itemName = itemData.name;
+  } else {
+    itemName = 'Без названия';
+  }
+  document.getElementById('itemTitle').innerHTML = `
+    ${itemName}
+    <span class="badge bg-light text-secondary ms-2" style="font-size: 1rem;">${itemData.type.name}</span>
+  `;
+
+  // Определяем единицу измерения для количества (ищем первое поле типа float с unit)
+  if (itemData.type && Array.isArray(itemData.type.fields)) {
+    const qtyField = itemData.type.fields.find(f => f.field_type === 'float' && f.unit);
+    if (qtyField) {
+      currentQuantityUnit = qtyField.unit;
+    }
+  }
+
+  // Таблица полей
+  const tbody = document.getElementById('itemFieldsTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  itemData.type.fields.forEach(field => {
+    const value = itemData.data ? itemData.data[field.name] : null;
+    let displayValue = '';
+    if (field.field_type === 'bool') {
+      displayValue = value ? '<span class="badge bg-success">Да</span>' : '<span class="badge bg-danger">Нет</span>';
+    } else if (field.field_type === 'date' && value) {
+      // Преобразуем дату к формату дд.мм.гггг (локальное время)
+      displayValue = formatDateLocal(value);
+    } else if (value === null || value === undefined || value === '') {
+      displayValue = '<span class="text-muted">—</span>';
+    } else {
+      displayValue = value;
+    }
+    tbody.insertAdjacentHTML('beforeend', `
+      <tr>
+        <th class="text-secondary" style="width: 220px;">
+          ${field.name}
+          ${field.unit ? `<span class="text-muted" style="font-size: 0.9em;">(${field.unit})</span>` : ''}
+        </th>
+        <td>${displayValue}</td>
+      </tr>
+    `);
+  });
+
+  // Описание (если есть)
+  if (itemData.data && itemData.data['Описание']) {
+    document.getElementById('itemDescriptionText').textContent = itemData.data['Описание'];
+    document.getElementById('itemDescriptionCard').classList.remove('d-none');
+  }
+
+  // Метаданные
+  const meta = document.getElementById('itemMetaData');
+  // Форматирование дат создания и обновления
+  meta.innerHTML = `
+    <dt class="col-6 text-secondary">ID</dt>
+    <dd class="col-6">${itemData.id}</dd>
+    <dt class="col-6 text-secondary">Дата создания</dt>
+    <dd class="col-6">${
+      itemData.created_at
+        ? formatDateTimeLocal(itemData.created_at)
+        : (
+            itemData.data && itemData.data['Дата создания']
+              ? (function() {
+                  return formatDateLocal(itemData.data['Дата создания']);
+                })()
+              : '<span class="text-muted">—</span>'
+          )
+    }</dd>
+    <dt class="col-6 text-secondary">Дата обновления</dt>
+    <dd class="col-6">${
+      itemData.updated_at
+        ? formatDateTimeLocal(itemData.updated_at)
+        : '<span class="text-muted">—</span>'
+    }</dd>
+    <dt class="col-6 text-secondary">Тип</dt>
+    <dd class="col-6">${itemData.type.name}</dd>
+  `;
+
+  // --- Методы для редактирования и удаления ---
+
+  // Редактирование вещества
+  document.getElementById('editItemBtn').addEventListener('click', function(e) {
+    e.preventDefault();
+
+    // Открываем форму редактирования (модальное окно)
+    let modal = document.getElementById('editItemModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'editItemModal';
+      modal.className = 'modal fade';
+      modal.tabIndex = -1;
+
+      // Формируем поля для редактирования на основе itemData.type.fields
+      let fieldsHtml = '';
+      (itemData.type.fields || []).forEach(field => {
+        let value = (itemData.data && itemData.data[field.name] !== undefined) ? itemData.data[field.name] : '';
+        let inputHtml = '';
+        if (field.field_type === 'string') {
+          inputHtml = `<input type="text" class="form-control" name="${field.name}" value="${value || ''}" ${field.is_required ? 'required' : ''}>`;
+        } else if (field.field_type === 'float') {
+          inputHtml = `<input type="number" step="any" class="form-control" name="${field.name}" value="${value || ''}" ${field.is_required ? 'required' : ''}>`;
+        } else if (field.field_type === 'enum') {
+          // Для enum предполагаем, что возможные значения заранее известны, здесь просто пример
+          inputHtml = `<input type="text" class="form-control" name="${field.name}" value="${value || ''}" ${field.is_required ? 'required' : ''}>`;
+        } else if (field.field_type === 'bool') {
+          inputHtml = `
+            <select class="form-select" name="${field.name}">
+              <option value="">—</option>
+              <option value="true" ${value === true || value === "true" ? 'selected' : ''}>Да</option>
+              <option value="false" ${value === false || value === "false" ? 'selected' : ''}>Нет</option>
+            </select>
+          `;
+        } else if (field.field_type === 'date') {
+          // value может быть в формате ISO, преобразуем к yyyy-mm-dd в локальном времени
+          let dateValue = '';
+          if (value) {
+            const d = new Date(value);
+            if (!isNaN(d)) {
+              // Получаем локальную дату в формате yyyy-mm-dd
+              const year = d.getFullYear();
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              dateValue = `${year}-${month}-${day}`;
+            }
+          }
+          inputHtml = `<input type="date" class="form-control" name="${field.name}" value="${dateValue}" ${field.is_required ? 'required' : ''}>`;
+        } else {
+          inputHtml = `<input type="text" class="form-control" name="${field.name}" value="${value || ''}">`;
+        }
+        fieldsHtml += `
+          <div class="mb-3">
+            <label class="form-label">${field.name}${field.unit ? ` (${field.unit})` : ''}</label>
+            ${inputHtml}
+          </div>
+        `;
+      });
+
+      modal.innerHTML = `
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <form id="editItemForm">
+              <div class="modal-header">
+                <h5 class="modal-title">Редактировать вещество</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+              </div>
+              <div class="modal-body">
+                <div class="mb-3">
+                  <label for="editItemName" class="form-label">Название</label>
+                  <input type="text" class="form-control" id="editItemName" name="name" value="${itemData.name || ''}" required>
+                </div>
+                ${fieldsHtml}
+                <div id="editItemMsg" class="mb-2"></div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+    // Инициализация Bootstrap-модального окна
+    let bsModal = bootstrap.Modal.getOrCreateInstance(modal);
+    bsModal.show();
+
+    // Обработка отправки формы редактирования
+    document.getElementById('editItemForm').onsubmit = async function(ev) {
+      ev.preventDefault();
+      const form = ev.target;
+      // Defensive: check for name field
+      const nameInput = form.querySelector('[name="name"]');
+      if (!nameInput) {
+        document.getElementById('editItemMsg').innerHTML = `<span class="text-danger">Поле "Название" не найдено</span>`;
+        return;
+      }
+      const name = nameInput.value.trim();
+
+      // Defensive: check for description field (may be missing)
+      let description = '';
+      const descriptionInput = form.querySelector('[name="Описание"]');
+      if (descriptionInput) {
+        description = descriptionInput.value.trim();
+      }
+
+      // Собираем все поля из формы
+      let data = {};
+      (itemData.type.fields || []).forEach(field => {
+        let el = form.querySelector(`[name="${field.name}"]`);
+        if (!el) return;
+        let val = el.value;
+        if (field.field_type === 'float') {
+          val = val ? parseFloat(val) : null;
+        } else if (field.field_type === 'bool') {
+          if (val === "true") val = true;
+          else if (val === "false") val = false;
+          else val = null;
+        } else if (field.field_type === 'date') {
+          val = val || null;
+        }
+        data[field.name] = val;
+      });
+      data['Описание'] = description;
+
+      const payload = {
+        name: name,
+        data: data
+      };
+
+      try {
+        const resp = await fetch(`/items/${itemId}/`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+          let errMsg = 'Ошибка сохранения';
+          try {
+            const err = await resp.json();
+            errMsg = err.detail || errMsg;
+          } catch {}
+          throw new Error(errMsg);
+        }
+        document.getElementById('editItemMsg').innerHTML = '<span class="text-success">Изменения сохранены</span>';
+        setTimeout(() => {
+          bsModal.hide();
+          window.location.reload();
+        }, 800);
+      } catch (err) {
+        document.getElementById('editItemMsg').innerHTML = `<span class="text-danger">${err.message || 'Ошибка сохранения'}</span>`;
+      }
+    };
+  });
+
+  // Удаление вещества
+  const deleteForm = document.getElementById('deleteItemForm');
+  deleteForm.action = `/items/${itemData.id}/delete/`;
+  deleteForm.onsubmit = function(e) {
+    e.preventDefault();
+    if (!confirm('Удалить это вещество?')) return false;
+    fetch(`/items/${itemData.id}/`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } })
+      .then(resp => {
+        if (resp.ok) {
+          window.location.href = `/types/${itemData.type.id}/`;
+        } else {
+          alert('Ошибка удаления');
+        }
+      });
+    return false;
+  };
+
+  // --- Списание/пополнение вещества ---
+  const quantityChangeForm = document.getElementById('quantityChangeForm');
+  const quantityChangeMsg = document.getElementById('quantityChangeMsg');
+  quantityChangeForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    quantityChangeMsg.textContent = '';
+    const changeTypeEl = document.getElementById('changeType');
+    const changeAmountEl = document.getElementById('changeAmount');
+    const changeReasonEl = document.getElementById('changeReason');
+    if (!changeTypeEl || !changeAmountEl || !changeReasonEl) {
+      quantityChangeMsg.innerHTML = '<span class="text-danger">Ошибка: не найдены поля формы</span>';
+      return;
+    }
+    const changeType = parseInt(changeTypeEl.value, 10);
+    const amount = parseFloat(changeAmountEl.value);
+    const reason = changeReasonEl.value;
+    if (!amount || amount <= 0) {
+      quantityChangeMsg.innerHTML = '<span class="text-danger">Введите корректное количество</span>';
+      return;
+    }
+    const payload = {
+      item_id: itemId,
+      change_type: changeType, // 0 - списание, 1 - пополнение
+      amount: amount,
+      reason: reason
+    };
+    try {
+      const resp = await fetch('/quantity_change/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) {
+        let errMsg = 'Ошибка операции';
+        try {
+          const err = await resp.json();
+          errMsg = err.detail || errMsg;
+        } catch {}
+        throw new Error(errMsg);
+      }
+      quantityChangeMsg.innerHTML = '<span class="text-success">Операция успешно выполнена</span>';
+      changeAmountEl.value = '';
+      changeReasonEl.value = '';
+      // Обновить историю и количество
+      await loadQuantityHistory();
+    } catch (err) {
+      quantityChangeMsg.innerHTML = `<span class="text-danger">${err.message || 'Ошибка операции'}</span>`;
+    }
+  });
+
+  // --- История изменений количества ---
+  async function loadQuantityHistory() {
+    const tbody = document.getElementById('quantityHistoryTable').querySelector('tbody');
+    tbody.innerHTML = '<tr><td colspan="4" class="text-muted">Загрузка...</td></tr>';
+    try {
+      const resp = await fetch(`/items/${itemId}/quantity_history`);
+      if (!resp.ok) throw new Error('Ошибка загрузки истории');
+      const history = await resp.json();
+      // Считаем текущее количество
+      let qty = 0;
+      if (Array.isArray(history) && history.length) {
+        history.forEach(change => {
+          if (change.change_type === 1) {
+            qty += Number(change.amount) || 0;
+          } else if (change.change_type === 0) {
+            qty -= Number(change.amount) || 0;
+          }
+        });
+      }
+      currentQuantity = qty;
+      renderCurrentQuantity();
+
+      if (!history.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-muted">Нет изменений</td></tr>';
+        return;
+      }
+      tbody.innerHTML = '';
+      history.forEach(change => {
+        const date = change.created_at ? formatDateTimeLocal(change.created_at) : '';
+        const op = change.change_type === 1 ? '<span class="text-success">Пополнение</span>' : '<span class="text-danger">Списание</span>';
+        const amount = change.amount;
+        const reason = change.reason ? change.reason : '<span class="text-muted">—</span>';
+        tbody.insertAdjacentHTML('beforeend', `
+          <tr>
+            <td>${date}</td>
+            <td>${op}</td>
+            <td>${amount}</td>
+            <td>${reason}</td>
+          </tr>
+        `);
+      });
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="4" class="text-danger">Ошибка загрузки истории</td></tr>`;
+      currentQuantity = 0;
+      renderCurrentQuantity();
+    }
+  }
+  await loadQuantityHistory();
+
+  // --- Работа с комментариями ---
+
+  const commentsList = document.getElementById('commentsList');
+  const addCommentForm = document.getElementById('addCommentForm');
+  const commentTextInput = document.getElementById('commentText');
+
+  // Функция для загрузки комментариев
+  async function loadComments() {
+    commentsList.innerHTML = '<div class="text-muted">Загрузка комментариев...</div>';
+    try {
+      const resp = await fetch(`/items/${itemId}/comments`);
+      if (!resp.ok) throw new Error('Ошибка загрузки комментариев');
+      const comments = await resp.json();
+      if (!comments.length) {
+        commentsList.innerHTML = '<div class="text-muted">Комментариев пока нет.</div>';
+        return;
+      }
+      commentsList.innerHTML = '';
+      comments.forEach(comment => {
+        const date = comment.created_at ? formatDateTimeLocal(comment.created_at) : '';
+        // Получаем инфу об авторе из comment.user
+        let authorName = 'Аноним';
+        let authorEmail = '';
+        if (comment.user) {
+          if (comment.user.username) {
+            authorName = comment.user.username;
+          } else if (comment.user.email) {
+            authorName = comment.user.email;
+          }
+          authorEmail = comment.user.email || '';
+        } else if (comment.author) {
+          authorName = comment.author;
+        }
+        // Кнопка удаления только если comment.can_delete === true
+        let deleteBtn = '';
+        if (comment.can_delete) {
+          deleteBtn = `<button class="btn btn-link btn-sm text-danger p-0 ms-2 delete-comment-btn" data-comment-id="${comment.id}" title="Удалить комментарий"><i class="bi bi-trash"></i></button>`;
+        }
+        // Формируем блок автора: имя (email если есть), id пользователя если есть
+        let authorInfoHtml = `<div class="fw-semibold">${authorName}`;
+        if (authorEmail && authorEmail !== authorName) {
+          authorInfoHtml += ` <span class="text-muted" style="font-size:0.95em;">(${authorEmail})</span>`;
+        }
+        // if (comment.user && comment.user.id) {
+        //   authorInfoHtml += ` <span class="text-muted" style="font-size:0.85em;">[${comment.user.id}]</span>`;
+        // }
+        authorInfoHtml += `</div>`;
+
+        commentsList.insertAdjacentHTML('beforeend', `
+          <div class="border-bottom py-2 d-flex align-items-start justify-content-between" data-comment-id="${comment.id}">
+            <div>
+              ${authorInfoHtml}
+              <div class="text-body">${escapeHtml(comment.text)}</div>
+              <div class="text-muted small">${date}</div>
+            </div>
+            <div>
+              ${deleteBtn}
+            </div>
+          </div>
+        `);
+      });
+      // Навесить обработчики на кнопки удаления
+      document.querySelectorAll('.delete-comment-btn').forEach(btn => {
+        btn.addEventListener('click', async function(e) {
+          e.preventDefault();
+          const commentId = this.getAttribute('data-comment-id');
+          if (!confirm('Удалить этот комментарий?')) return;
+          try {
+            const resp = await fetch(`/items/${itemId}/comments/${commentId}/`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            if (!resp.ok) throw new Error('Ошибка удаления');
+            await loadComments();
+          } catch (err) {
+            alert('Ошибка удаления комментария');
+          }
+        });
+      });
+    } catch (e) {
+      commentsList.innerHTML = `<div class="text-danger">Ошибка загрузки комментариев</div>`;
+    }
+  }
+
+  // Экранирование html для вывода текста комментария
+  function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/[&<>"']/g, function(m) {
+      switch (m) {
+        case '&': return '&amp;';
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '"': return '&quot;';
+        case "'": return '&#39;';
+      }
+    });
+  }
+
+  // Обработка добавления комментария
+  addCommentForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    if (!commentTextInput) return;
+    const text = commentTextInput.value.trim();
+    if (!text) return;
+    addCommentForm.querySelector('button[type="submit"]').disabled = true;
+    try {
+      const resp = await fetch(`/items/${itemId}/comments/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text })
+      });
+      if (!resp.ok) {
+        let errMsg = 'Ошибка добавления комментария';
+        try {
+          const err = await resp.json();
+          errMsg = err.detail || errMsg;
+        } catch {}
+        throw new Error(errMsg);
+      }
+      commentTextInput.value = '';
+      await loadComments();
+    } catch (err) {
+      alert(err.message || 'Ошибка добавления комментария');
+    } finally {
+      addCommentForm.querySelector('button[type="submit"]').disabled = false;
+    }
+  });
+
+  // Загрузить комментарии при инициализации
+  await loadComments();
+
+});
+</script>

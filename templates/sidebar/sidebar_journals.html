@@ -1,0 +1,890 @@
+{# sidebar.html #}
+<nav id="sidebar" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse shadow-sm">
+    <div class="row g-0">
+        <!-- Минималистичный sidebar с иконками -->
+        <div class="col-2 px-0" style="border-right: 1px solid #e5e5e5; background: #f8f9fa;">
+            <div class="d-flex flex-column align-items-center py-3" style="height: 100vh;">
+                <a class="mb-3 text-muted" href="#" title="Поиск" data-bs-toggle="modal" data-bs-target="#searchModal">
+                    <i class="bi bi-search" style="font-size: 1.3rem;"></i>
+                </a>
+                <a class="mb-3 text-muted" href="/dashboard" title="Дэшборд" tabindex="-1">
+                    <i class="bi bi-speedometer2" style="font-size: 1.3rem;"></i>
+                </a>
+                <a class="mb-3 text-primary" href="/substance" title="Учет">
+                    <i class="bi bi-123" style="font-size: 1.3rem;"></i>
+                </a>
+                <a class="mb-3 text-muted" href="#" title="Протоколы" tabindex="-1" aria-disabled="true" style="filter: blur(2px); pointer-events: none;">
+                    <i class="bi bi-archive" style="font-size: 1.3rem;"></i>
+                </a>
+                <a class="mb-3 text-muted" href="/journals" title="Журналы" tabindex="-1" aria-disabled="true">
+                    <i class="bi bi-file-text" style="font-size: 1.3rem;"></i>
+                </a>
+                <a class="mb-3 text-muted" href="#" title="Инвентаризация" tabindex="-1" aria-disabled="true" style="filter: blur(2px); pointer-events: none;">
+                    <i class="bi bi-box" style="font-size: 1.3rem;"></i>
+                </a>
+                <a class="mb-3 text-muted" href="/tasks" title="Задачи" tabindex="-1">
+                    <i class="bi bi-list-task" style="font-size: 1.3rem;"></i>
+                </a>
+                <div class="mt-auto">
+                    <a class="text-muted" href="/inventory" title="Профиль">
+                        <i class="bi bi-person-circle" style="font-size: 1.3rem;"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+        <!-- Минималистичный список папок и журналов -->
+        <div class="col-10 pt-3" style="padding-left: 10px; padding-right: 10px;">
+            <h6 class="mb-3 text-secondary" style="font-size: 1.1rem; font-weight: 500;">
+                <i class="bi bi-folder2-open me-1"></i>Журналы
+            </h6>
+            <div class="dropdown w-100 mb-2">
+                <div class="input-group input-group-sm">
+                    <input type="text" id="searchInput" class="form-control" placeholder="Поиск журналов...">
+                    <button class="btn btn-outline-primary" type="button" id="searchButton">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+                <button class="btn btn-success btn-sm w-100 mt-2 dropdown-toggle" type="button" id="createDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    Создать
+                </button>
+                <ul class="dropdown-menu w-100" aria-labelledby="createDropdown">
+                    <li>
+                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#createJournalModal" id="createJournalBtn">Журнал</a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#createFolderModal" id="createFolderBtn">Папка</a>
+                    </li>
+                </ul>
+            </div>
+            <div style="max-height: 85vh; overflow-y: auto;">
+                {% include "utils/search_filters.html" %}
+                <!-- Список папок -->
+                <div id="folders-list" class="folders-minimal-list">
+                    <div id="folders-loading" class="text-center text-muted py-4" style="font-size: 0.95em;">
+                        <div class="spinner-border spinner-border-sm me-2"></div>Загрузка...
+                    </div>
+                    <!-- Сюда будет рендериться список папок и несортированных журналов -->
+                </div>
+                <!-- Результаты поиска по журналам -->
+                <div id="journals-search-results" class="folders-minimal-list" style="display: none;">
+                    <div id="journals-search-title-results"></div>
+                    <div id="journals-search-tag-results"></div>
+                    <div id="journals-search-no-results" class="text-muted py-3" style="display: none;">Ничего не найдено</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</nav>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchInput');
+    const searchButton = document.getElementById('searchButton');
+    const foldersList = document.getElementById('folders-list');
+    const searchResults = document.getElementById('journals-search-results');
+    const searchTitleResults = document.getElementById('journals-search-title-results');
+    const searchTagResults = document.getElementById('journals-search-tag-results');
+    const searchNoResults = document.getElementById('journals-search-no-results');
+
+    function renderSearchResults(results) {
+        // Очистить результаты
+        searchTitleResults.innerHTML = '';
+        searchTagResults.innerHTML = '';
+        searchNoResults.style.display = 'none';
+
+        let found = false;
+
+        // Поиск по названию
+        if (results.by_title && results.by_title.length > 0) {
+            found = true;
+            let html = '<div class="mb-2 text-secondary" style="font-size:0.97em;">По названию</div>';
+            html += '<ul class="list-unstyled mb-3">';
+            for (const journal of results.by_title) {
+                html += `<li>
+                    <a href="/journal/${journal.id}" class="folder-minimal d-block px-2 py-1">
+                        <i class="bi bi-file-earmark-text me-1"></i>
+                        <span class="folder-name">${journal.filename || 'Без названия'}</span>
+                    </a>
+                </li>`;
+            }
+            html += '</ul>';
+            searchTitleResults.innerHTML = html;
+        }
+
+        // Поиск по тегам
+        if (results.by_tags && results.by_tags.length > 0) {
+            found = true;
+            let html = '<div class="mb-2 text-secondary" style="font-size:0.97em;">По тегам</div>';
+            html += '<ul class="list-unstyled mb-3">';
+            for (const journal of results.by_tags) {
+                html += `<li>
+                    <a href="/journal/${journal.id}" class="folder-minimal d-block px-2 py-1">
+                        <i class="bi bi-file-earmark-text me-1"></i>
+                        <span class="folder-name">${journal.filename || 'Без названия'}</span>
+                    </a>
+                </li>`;
+            }
+            html += '</ul>';
+            searchTagResults.innerHTML = html;
+        }
+
+        if (!found) {
+            searchNoResults.style.display = '';
+        }
+    }
+
+    function doSearch() {
+        const query = searchInput.value.trim();
+        if (query.length === 0) {
+            // Показать обычный список папок
+            foldersList.style.display = '';
+            searchResults.style.display = 'none';
+            return;
+        }
+        // Показать индикатор загрузки
+        searchTitleResults.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm me-2"></div>Поиск...</div>';
+        searchTagResults.innerHTML = '';
+        searchNoResults.style.display = 'none';
+        foldersList.style.display = 'none';
+        searchResults.style.display = '';
+
+        fetch(`/search?query=${encodeURIComponent(query)}`)
+            .then(resp => resp.json())
+            .then(results => {
+                renderSearchResults(results);
+            })
+            .catch(() => {
+                searchTitleResults.innerHTML = '';
+                searchTagResults.innerHTML = '';
+                searchNoResults.style.display = '';
+                searchNoResults.textContent = 'Ошибка поиска';
+            });
+    }
+
+    searchButton.addEventListener('click', doSearch);
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            doSearch();
+        }
+    });
+    searchInput.addEventListener('input', function() {
+        if (searchInput.value.trim().length === 0) {
+            foldersList.style.display = '';
+            searchResults.style.display = 'none';
+        }
+    });
+});
+</script>
+<!-- Модальное окно для создания журнала -->
+<div class="modal fade" id="createJournalModal" tabindex="-1" aria-labelledby="createJournalModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <form class="modal-content" id="createJournalModalForm" autocomplete="off">
+        <div class="modal-header">
+          <h5 class="modal-title" id="createJournalModalLabel">Создать журнал</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="journalName" class="form-label">Название журнала</label>
+            <input type="text" class="form-control" id="journalName" name="filename" required>
+          </div>
+          <div class="mb-3">
+            <label for="journalFolder" class="form-label">Папка</label>
+            <select class="form-select" id="journalFolder" name="folder_id">
+              <option value="">Без папки</option>
+              <!-- Папки будут подгружаться через JS -->
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-primary">Создать</button>
+        </div>
+      </form>
+    </div>
+</div>
+<script>
+// --- Загрузка списка папок для выбора папки при создании журнала ---
+function loadJournalFoldersSelect() {
+    fetch('/api/folders')
+        .then(resp => resp.json())
+        .then(tree => {
+            const select = document.getElementById('journalFolder');
+            // Очищаем, кроме первого option
+            select.innerHTML = '<option value="">Без папки</option>';
+            // Собираем все папки в плоский список с уровнями
+            function collectFolders(arr, level = 0) {
+                let res = [];
+                for (const folder of arr) {
+                    // Не добавляем "Несортированные" (id == null)
+                    if (folder.id !== null) {
+                        res.push({id: folder.id, name: folder.name, level: level});
+                    }
+                    if (folder.children && folder.children.length > 0) {
+                        res = res.concat(collectFolders(folder.children, level + 1));
+                    }
+                }
+                return res;
+            }
+            const folders = collectFolders(tree);
+            for (const folder of folders) {
+                const option = document.createElement('option');
+                option.value = folder.id;
+                option.textContent = '—'.repeat(folder.level) + (folder.level > 0 ? ' ' : '') + folder.name;
+                select.appendChild(option);
+            }
+        });
+}
+
+// Открытие модального окна — подгружаем папки
+document.getElementById('createJournalBtn').addEventListener('click', function() {
+    loadJournalFoldersSelect();
+    // Сброс формы при открытии
+    document.getElementById('createJournalModalForm').reset();
+});
+
+// Обработка отправки формы создания журнала
+document.getElementById('createJournalModalForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const form = e.target;
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = 'Создание...';
+    const filename = form.filename.value.trim();
+    const folder_id = form.folder_id.value ? form.folder_id.value : null;
+    if (!filename) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Создать';
+        alert('Введите название журнала');
+        return;
+    }
+    try {
+        const formData = new FormData();
+        formData.append('filename', filename);
+        if (folder_id) formData.append('folder_id', folder_id);
+        const resp = await fetch('/journals/create', {
+            method: 'POST',
+            body: formData
+        });
+        if (resp.redirected) {
+            window.location.href = resp.url;
+        } else {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Создать';
+            alert('Ошибка при создании журнала');
+        }
+    } catch (err) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Создать';
+        alert('Ошибка сети');
+    }
+});
+</script>
+
+<!-- Модальное окно для создания папки -->
+<div class="modal fade" id="createFolderModal" tabindex="-1" aria-labelledby="createFolderModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <form class="modal-content" id="createFolderModalForm" autocomplete="off">
+        <div class="modal-header">
+          <h5 class="modal-title" id="createFolderModalLabel">Создать папку</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="folderName" class="form-label">Название папки</label>
+            <input type="text" class="form-control" id="folderName" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label for="folderParent" class="form-label">Родительская папка</label>
+            <select class="form-select" id="folderParent" name="parent_id">
+              <option value="">Без родительской папки</option>
+              <!-- Папки будут подгружаться через JS -->
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+          <button type="submit" class="btn btn-primary">Создать</button>
+        </div>
+      </form>
+    </div>
+</div>
+<script>
+// --- Загрузка списка папок для выбора родительской папки ---
+function loadParentFoldersSelect() {
+    fetch('/api/folders')
+        .then(resp => resp.json())
+        .then(tree => {
+            const select = document.getElementById('folderParent');
+            // Очищаем, кроме первого option
+            select.innerHTML = '<option value="">Без родительской папки</option>';
+            // Собираем все папки в плоский список с уровнями
+            function collectFolders(arr, level = 0) {
+                let res = [];
+                for (const folder of arr) {
+                    // Не добавляем "Несортированные" (id == null)
+                    if (folder.id !== null) {
+                        res.push({id: folder.id, name: folder.name, level: level});
+                    }
+                    if (folder.children && folder.children.length > 0) {
+                        res = res.concat(collectFolders(folder.children, level + 1));
+                    }
+                }
+                return res;
+            }
+            const allFolders = collectFolders(tree);
+            for (const f of allFolders) {
+                const opt = document.createElement('option');
+                opt.value = f.id;
+                opt.innerHTML = '&nbsp;'.repeat(f.level * 4) + f.name;
+                select.appendChild(opt);
+            }
+        })
+        .catch(() => {
+            // Ошибка загрузки папок
+            const select = document.getElementById('folderParent');
+            select.innerHTML = '<option value="">Ошибка загрузки папок</option>';
+        });
+}
+
+// Открытие модального окна — подгружаем папки
+document.getElementById('createFolderBtn')?.addEventListener('click', function() {
+    loadParentFoldersSelect();
+    // Сброс формы при открытии
+    document.getElementById('createFolderModalForm').reset();
+});
+
+// --- Обработка отправки формы создания папки ---
+document.getElementById('createFolderModalForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const nameInput = document.getElementById('folderName');
+    const parentSelect = document.getElementById('folderParent');
+    const name = nameInput.value.trim();
+    const parent_id = parentSelect.value ? parseInt(parentSelect.value) : null;
+
+    if (!name) {
+        nameInput.classList.add('is-invalid');
+        return;
+    }
+    nameInput.classList.remove('is-invalid');
+
+    // Блокируем кнопку
+    const submitBtn = this.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    try {
+        const resp = await fetch('/folders/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({name: name, parent_id: parent_id})
+        });
+        if (resp.redirected) {
+            // Закрываем модалку
+            const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('createFolderModal'));
+            modal.hide();
+            // Обновляем список папок
+            if (typeof foldersTreeData !== 'undefined') {
+                // Если глобальная переменная есть, обновим дерево
+                fetch('/api/folders')
+                    .then(r => r.json())
+                    .then(tree => {
+                        foldersTreeData = tree;
+                        rerenderFolders();
+                    });
+            } else {
+                // Иначе просто перезагрузим страницу
+                location.reload();
+            }
+        } else {
+            // Ошибка создания
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Создать';
+            alert('Ошибка при создании папки');
+        }
+    } catch (err) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Создать';
+        alert('Ошибка сети');
+    }
+});
+</script>
+<script src="/static/scripts/sidebar.js"></script>
+<style>
+/* Минималистичный стиль для списка папок */
+.folders-minimal-list {
+    font-size: 0.97em;
+    padding: 0;
+}
+.folder-minimal {
+    display: flex;
+    align-items: center;
+    padding: 3px 0 3px 0;
+    border-radius: 4px;
+    transition: background 0.15s;
+    cursor: pointer;
+    min-height: 28px;
+    user-select: none;
+}
+.folder-minimal:hover, .folder-minimal.active {
+    background: #f1f3f5;
+}
+.folder-minimal .bi-folder-fill {
+    font-size: 1.1em;
+    margin-right: 6px;
+}
+.folder-minimal .folder-chevron {
+    font-size: 1em;
+    margin-right: 4px;
+    color: #adb5bd;
+    transition: transform 0.2s;
+    display: inline-block;
+}
+.folder-minimal .chevron-rotated {
+    transform: rotate(90deg);
+}
+.folder-minimal .folder-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1 1 auto;
+    font-size: 1em;
+}
+.folder-minimal .folder-actions {
+    margin-left: 4px;
+}
+.folder-content-anim {
+    overflow: hidden;
+    transition: max-height 0.2s cubic-bezier(.4,0,.2,1), opacity 0.2s cubic-bezier(.4,0,.2,1);
+    opacity: 1;
+    max-height: 500px;
+    margin-left: 18px;
+}
+.folder-content-anim.collapsed {
+    opacity: 0;
+    max-height: 0;
+    pointer-events: none;
+}
+.journal-minimal {
+    display: flex;
+    align-items: center;
+    padding: 2px 0 2px 0;
+    border-radius: 3px;
+    margin-left: 22px;
+    font-size: 0.97em;
+    transition: background 0.12s;
+}
+.journal-minimal:hover {
+    background: #f8f9fa;
+}
+.journal-minimal .bi-journal-text {
+    font-size: 1em;
+    margin-right: 5px;
+    color: #adb5bd;
+}
+.journal-minimal .journal-link {
+    color: #212529;
+    text-decoration: none;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.journal-actions-dropdown {
+    position: relative;
+    display: inline-block;
+}
+.journal-actions-dropdown .custom-dropdown-menu {
+    display: none;
+    position: fixed;
+    min-width: 160px;
+    z-index: 3000;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0,0,0,.10);
+    padding: 0.3rem 0;
+    font-size: 0.97em;
+}
+.journal-actions-dropdown .custom-dropdown-menu.show {
+    display: block;
+    animation: fadeIn 0.12s;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px);}
+    to { opacity: 1; transform: translateY(0);}
+}
+.journal-actions-dropdown .custom-dropdown-menu .dropdown-header {
+    font-size: 0.93em;
+    color: #6c757d;
+    padding: 0.25rem 1rem 0.25rem 1rem;
+}
+.journal-actions-dropdown .custom-dropdown-menu .dropdown-item {
+    padding: 0.4rem 1rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.journal-actions-dropdown .custom-dropdown-menu .dropdown-item:hover {
+    background: #f8f9fa;
+}
+/* DnD визуал */
+.journal-dragging {
+    opacity: 0.5;
+    background: #ffeeba !important;
+}
+.folder-drop-target {
+    outline: 2px dashed #007bff !important;
+    background: #e9f5ff !important;
+}
+</style>
+<script>
+function escapeHtml(text) {
+    let div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Собираем список всех папок для выпадающего списка
+function collectAllFolders(tree, arr = [], level = 0) {
+    if (!tree) return arr;
+    for (const folder of tree) {
+        arr.push({
+            id: folder.id,
+            name: folder.name,
+            level: level
+        });
+        if (folder.children && folder.children.length > 0) {
+            collectAllFolders(folder.children, arr, level + 1);
+        }
+    }
+    return arr;
+}
+
+function renderJournals(journals, collapsed, allFolders, currentFolderId) {
+    if (!journals || journals.length === 0 || collapsed) return '';
+    let html = '';
+    for (const journal of journals) {
+        html += `
+            <div class="journal-minimal journal-draggable" data-journal-id="${journal.id}" draggable="true">
+                <i class="bi bi-journal-text"></i>
+                <a href="/journal/${journal.id}" class="journal-link">${escapeHtml(journal.filename)}</a>
+                <div class="journal-actions-dropdown">
+                    <button class="btn btn-sm btn-light journal-actions-btn" type="button" title="Действия" data-journal-id="${journal.id}" style="padding:2px 6px;">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    <div class="custom-dropdown-menu" data-journal-id="${journal.id}">
+                        <div class="dropdown-header">Переместить в папку</div>
+                        ${allFolders
+                            .filter(f => f.id !== null && f.id != currentFolderId)
+                            .map(f => `
+                                <div class="dropdown-item move-journal-item" data-move-folder-id="${f.id}">
+                                    ${"&nbsp;".repeat(f.level * 2)}<i class="bi bi-folder-fill me-1"></i> ${escapeHtml(f.name)}
+                                </div>
+                            `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    return html;
+}
+
+// Состояние свёрнутости папок (id: true/false)
+let collapsedFolders = {};
+
+function renderFolder(folder, level=0, allFolders) {
+    // Цвет и иконка для разных папок
+    let colorClass = "text-warning";
+    if (folder.id === null) colorClass = "text-secondary";
+    else if (folder.name && folder.name.toLowerCase().includes("лич")) colorClass = "text-primary";
+    else if (folder.name && folder.name.toLowerCase().includes("проект")) colorClass = "text-success";
+    // id для сворачивания
+    let folderId = folder.id !== null ? folder.id : 'unsorted';
+    let isCollapsed = collapsedFolders[folderId] === true;
+    // Иконка chevron-right, поворачиваем при открытии
+    let chevronClass = isCollapsed ? "" : " chevron-rotated";
+    let html = `
+        <div class="folder-minimal folder-dropzone" data-folder-id="${folderId}" style="padding-left: ${level*14 + 2}px;">
+            <span class="folder-chevron">
+                <i class="bi bi-chevron-right folder-chevron${chevronClass}" data-toggle="collapse-folder" data-folder-id="${folderId}" style="cursor:pointer;"></i>
+            </span>
+            <i class="bi bi-folder-fill ${colorClass}"></i>
+            <span class="folder-name">${escapeHtml(folder.name)}</span>
+        </div>
+        <div class="folder-content-anim${isCollapsed ? ' collapsed' : ''}" data-folder-content="${folderId}">
+            ${renderJournals(folder.journals, isCollapsed, allFolders, folder.id)}
+            ${folder.children && folder.children.length > 0 ? folder.children.map(child => renderFolder(child, level+1, allFolders)).join('') : ''}
+        </div>
+    `;
+    return html;
+}
+
+function renderFoldersTree(tree) {
+    if (!tree || tree.length === 0) {
+        return `<div class="text-muted text-center py-4" style="font-size:0.95em;">Нет папок и журналов</div>`;
+    }
+    // Собираем список всех папок для выпадающих списков
+    const allFolders = collectAllFolders(tree);
+    return tree.map(folder => renderFolder(folder, 0, allFolders)).join('');
+}
+function renderNewFolderForm() {
+    return ``;
+}
+
+// JS-обработчик для создания папки через fetch
+document.addEventListener('DOMContentLoaded', function() {
+    function attachCreateFolderHandler() {
+        const btn = document.getElementById('create-folder-btn');
+        if (!btn) return;
+        btn.addEventListener('click', async function() {
+            const nameInput = document.getElementById('new-folder-name');
+            const parentIdInput = document.getElementById('new-folder-parent-id');
+            const name = nameInput.value.trim();
+            const parent_id = parentIdInput.value ? parseInt(parentIdInput.value) : null;
+            if (!name) {
+                nameInput.classList.add('is-invalid');
+                return;
+            }
+            nameInput.classList.remove('is-invalid');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+            try {
+                const resp = await fetch('/folders/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ name, parent_id })
+                });
+                if (resp.redirected) {
+                    window.location.href = resp.url;
+                    return;
+                }
+                if (resp.ok) {
+                    // Обновить дерево папок (или перезагрузить)
+                    await loadFoldersTree();
+                } else {
+                    alert('Ошибка при создании папки');
+                }
+            } catch (e) {
+                alert('Ошибка сети');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-plus-lg"></i> Новая папка';
+                nameInput.value = '';
+            }
+        });
+    }
+    // attachCreateFolderHandler вызывается после рендера формы
+    // Поэтому нужно вызывать его после каждого rerenderFolders
+    window.attachCreateFolderHandler = attachCreateFolderHandler;
+});
+
+// Вызов attachCreateFolderHandler после рендера формы
+const oldRerenderFolders = rerenderFolders;
+rerenderFolders = function() {
+    oldRerenderFolders.apply(this, arguments);
+    if (window.attachCreateFolderHandler) window.attachCreateFolderHandler();
+};
+
+let foldersTreeData = null;
+
+function rerenderFolders() {
+    const foldersList = document.getElementById('folders-list');
+    foldersList.innerHTML = renderFoldersTree(foldersTreeData) + renderNewFolderForm();
+    // Назначаем обработчики для сворачивания/разворачивания
+    foldersList.querySelectorAll('[data-toggle="collapse-folder"]').forEach(el => {
+        el.addEventListener('click', function(e) {
+            const folderId = this.getAttribute('data-folder-id');
+            collapsedFolders[folderId] = !collapsedFolders[folderId];
+            // Анимация: плавно меняем класс collapsed
+            const content = foldersList.querySelector(`[data-folder-content="${folderId}"]`);
+            // Найти иконку chevron для этой папки
+            // (иконка - это <i> с data-toggle="collapse-folder" и data-folder-id=folderId)
+            // Важно: использовать именно this, чтобы не сбивать chevron у других папок
+            if (content) {
+                if (!collapsedFolders[folderId]) {
+                    content.classList.remove('collapsed');
+                } else {
+                    content.classList.add('collapsed');
+                }
+            }
+            // Управляем классом chevron-rotated только у текущей иконки
+            if (!collapsedFolders[folderId]) {
+                this.classList.add('chevron-rotated');
+            } else {
+                this.classList.remove('chevron-rotated');
+            }
+        });
+    });
+
+    // --- DnD обработчики для журналов и папок ---
+    // Перетаскиваемые журналы
+    foldersList.querySelectorAll('.journal-draggable').forEach(journalEl => {
+        journalEl.addEventListener('dragstart', function(e) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', this.getAttribute('data-journal-id'));
+            this.classList.add('journal-dragging');
+        });
+        journalEl.addEventListener('dragend', function(e) {
+            this.classList.remove('journal-dragging');
+            // Убираем выделение с папок
+            foldersList.querySelectorAll('.folder-drop-target').forEach(f => f.classList.remove('folder-drop-target'));
+        });
+    });
+
+    // Зоны для дропа — карточки папок
+    foldersList.querySelectorAll('.folder-dropzone').forEach(folderEl => {
+        folderEl.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            this.classList.add('folder-drop-target');
+        });
+        folderEl.addEventListener('dragleave', function(e) {
+            this.classList.remove('folder-drop-target');
+        });
+        folderEl.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.classList.remove('folder-drop-target');
+            const journalId = e.dataTransfer.getData('text/plain');
+            const folderId = this.getAttribute('data-folder-id');
+            if (journalId && folderId && folderId !== 'unsorted') {
+                moveJournalToFolder(journalId, folderId);
+            }
+        });
+    });
+
+    // --- Кастомные выпадающие меню "Переместить в папку" ---
+    // Сначала убираем все старые обработчики (на случай повторного рендера)
+    document.querySelectorAll('.custom-dropdown-menu.show').forEach(menu => menu.classList.remove('show'));
+
+    foldersList.querySelectorAll('.journal-actions-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            // Закрыть все открытые меню
+            document.querySelectorAll('.custom-dropdown-menu.show').forEach(menu => menu.classList.remove('show'));
+            // Показать текущее меню
+            const journalId = this.getAttribute('data-journal-id');
+            const menu = foldersList.querySelector(`.custom-dropdown-menu[data-journal-id="${journalId}"]`);
+            if (menu) {
+                // Позиционируем меню относительно кнопки (но фиксировано, чтобы не было обрезки)
+                const btnRect = this.getBoundingClientRect();
+                menu.style.left = (btnRect.left) + 'px';
+                menu.style.top = (btnRect.bottom + 2) + 'px';
+                menu.classList.add('show');
+            }
+        });
+    });
+
+    // Клик вне меню — закрыть все меню
+    document.addEventListener('click', closeAllCustomDropdowns);
+    function closeAllCustomDropdowns(e) {
+        document.querySelectorAll('.custom-dropdown-menu.show').forEach(menu => {
+            if (!menu.contains(e.target)) {
+                menu.classList.remove('show');
+            }
+        });
+    }
+
+    // При скролле — закрыть все меню (чтобы не "зависали" в воздухе)
+    window.addEventListener('scroll', function() {
+        document.querySelectorAll('.custom-dropdown-menu.show').forEach(menu => menu.classList.remove('show'));
+    });
+
+    // --- Обработчики для пунктов "Переместить в папку" ---
+    foldersList.querySelectorAll('.move-journal-item').forEach(moveItem => {
+        moveItem.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const menu = this.closest('.custom-dropdown-menu');
+            if (menu) menu.classList.remove('show');
+            const journalId = menu.getAttribute('data-journal-id');
+            const folderId = this.getAttribute('data-move-folder-id');
+            if (journalId && folderId) {
+                moveJournalToFolder(journalId, folderId);
+            }
+        });
+    });
+}
+
+// Перемещение журнала в папку через API
+function moveJournalToFolder(journalId, folderId) {
+    fetch(`/api/journals/${journalId}/move`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCSRFToken()
+        },
+        body: JSON.stringify({ folder_id: folderId })
+    })
+    .then(resp => {
+        if (!resp.ok) throw new Error('Ошибка перемещения');
+        return resp.json();
+    })
+    .then(data => {
+        showMoveToast(data.journal_filename, data.folder_name);
+        // Перерисовать дерево папок и журналов
+        return fetch('/api/folders');
+    })
+    .then(resp => resp.json())
+    .then(tree => {
+        foldersTreeData = tree;
+        rerenderFolders();
+    })
+    .catch(err => {
+        showMoveToast('Ошибка', 'Не удалось переместить', true);
+    });
+}
+
+// Получение CSRF-токена (если используется Django или Flask-WTF)
+function getCSRFToken() {
+    let cookie = document.cookie.match('(^|;)\\s*csrftoken\\s*=\\s*([^;]+)');
+    if (cookie) return cookie.pop();
+    let meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta) return meta.getAttribute('content');
+    return '';
+}
+
+// Тост о переносе
+function showMoveToast(journalName, folderName, isError) {
+    let toast = document.createElement('div');
+    toast.className = 'toast align-items-center ' + (isError ? 'text-bg-danger' : 'text-bg-primary') + ' border-0 show position-fixed top-0 end-0 m-3';
+    toast.style.zIndex = 2000;
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">
+                ${isError
+                    ? 'Ошибка перемещения'
+                    : `Журнал <b>${escapeHtml(journalName)}</b> перемещён в папку <b>${escapeHtml(folderName)}</b>`
+                }
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Закрыть"></button>
+        </div>
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 500);
+    }, 2000);
+    toast.querySelector('.btn-close').onclick = () => toast.remove();
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    const foldersList = document.getElementById('folders-list');
+    fetch('/api/folders')
+        .then(resp => resp.json())
+        .then(tree => {
+            foldersTreeData = tree;
+            rerenderFolders();
+        })
+        .catch(err => {
+            foldersList.innerHTML = `<div class="text-danger text-center py-4">Ошибка загрузки папок</div>`;
+        });
+
+    // Можно добавить обработку кликов по папкам/журналам для динамического отображения содержимого справа
+    // или оставить как есть (переход по ссылке на журнал)
+});
+</script>

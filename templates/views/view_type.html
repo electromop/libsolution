@@ -1,0 +1,158 @@
+{# view_type.html #}
+<div id="main">
+    <div class="d-flex align-items-center mt-3 pb-2" style="background: none;">
+      <h2 id="typeName" class="me-3 mb-0 fw-semibold text-dark" style="font-size: 2rem; letter-spacing: 0.5px;">Выберите тип</h2>
+      <div id="typeActions" class="type-actions d-flex gap-2 align-items-center" style="display:none;">
+        <button type="button"
+          class="btn btn-icon btn-outline-secondary rounded-circle d-flex align-items-center justify-content-center"
+          data-bs-toggle="modal"
+          data-bs-target="#fieldsModal"
+          title="Настроить поля"
+          style="width: 40px; height: 40px; border: none; background: #f5f6fa; transition: background 0.2s;">
+          <i class="bi bi-gear" style="font-size: 1.3rem; color: #6c757d;"></i>
+        </button>
+        <button type="button"
+          class="btn btn-icon btn-outline-success rounded-circle d-flex align-items-center justify-content-center"
+          data-bs-toggle="modal"
+          data-bs-target="#addItemModal"
+          title="Добавить вещество"
+          style="width: 40px; height: 40px; border: none; background: #f5f6fa; transition: background 0.2s;">
+          <i class="bi bi-database-add" style="font-size: 1.3rem; color: #198754;"></i>
+        </button>
+        <!-- Кнопка фильтров -->
+        <button type="button"
+          class="btn btn-icon btn-outline-primary rounded-circle d-flex align-items-center justify-content-center"
+          id="toggleFiltersBtn"
+          title="Фильтры"
+          style="width: 40px; height: 40px; border: none; background: #f5f6fa; transition: background 0.2s;">
+          <i class="bi bi-funnel" style="font-size: 1.3rem; color: #0d6efd;"></i>
+        </button>
+      </div>
+    </div>
+    <!-- Блок фильтров (по умолчанию скрыт, с анимацией) -->
+    <div id="filtersBlock" class="card shadow-sm mb-3 filters-animated" style="display: none; border-radius: 1rem; overflow: hidden;">
+      <form id="filtersForm">
+        <div class="card-body py-3">
+          <div class="row g-4">
+            <!-- Фильтр по названию -->
+            <div class="col-lg-4 col-md-6">
+              <div class="filter-group p-3 rounded-3 border bg-light h-100">
+                <label class="form-label fw-semibold mb-2" for="filterName">
+                  <i class="bi bi-fonts me-1"></i>Название
+                </label>
+                <div class="input-group">
+                  <select class="form-select" id="filterNameMode" name="name_mode" style="max-width: 120px;">
+                    <option value="contains">Содержит</option>
+                    <option value="equals">Равен</option>
+                  </select>
+                  <input type="text" class="form-control" id="filterName" name="name" placeholder="Введите название">
+                </div>
+              </div>
+            </div>
+            <!-- Фильтр по дате создания -->
+            <div class="col-lg-4 col-md-6">
+              <div class="filter-group p-3 rounded-3 border bg-light h-100">
+                <label class="form-label fw-semibold mb-2">
+                  <i class="bi bi-calendar-event me-1"></i>Дата создания
+                </label>
+                <div class="row g-2">
+                  <div class="col">
+                    <input type="date" class="form-control" id="filterDateFrom" name="date_from" placeholder="От">
+                  </div>
+                  <div class="col">
+                    <input type="date" class="form-control" id="filterDateTo" name="date_to" placeholder="До">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="row mt-1 g-4 dynamic-fields">
+            <!-- Здесь подгружаются динамические фильтры -->
+          </div>
+          <div class="row g-4">
+            <!-- Кнопки управления фильтрами -->
+            <div class="col-12">
+              <div class="d-flex gap-2 justify-content-end mt-2">
+                <button type="submit" class="btn btn-primary px-4">
+                  <i class="bi bi-funnel me-1"></i>Применить
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="clearFiltersBtn">
+                  <i class="bi bi-x-circle me-1"></i>Сбросить
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+    <!-- Обертка для прокрутки таблицы -->
+    <div style="max-height: 85vh; overflow-y: auto;">
+      <table id="itemsTable" class="table table-hover"></table>
+    </div>
+  </div>
+  <style>
+    /* Анимация появления/скрытия фильтров */
+    .filters-animated {
+      transition: max-height 0.4s cubic-bezier(.4,0,.2,1), opacity 0.4s cubic-bezier(.4,0,.2,1), margin 0.4s cubic-bezier(.4,0,.2,1);
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      margin-bottom: 0 !important;
+      pointer-events: none;
+    }
+    .filters-animated.show {
+      max-height: 1000px;
+      opacity: 1;
+      margin-bottom: 1.5rem !important;
+      pointer-events: auto;
+    }
+    /* Стили для прокручиваемой таблицы */
+    #main > div[style*="overflow-y: auto"] {
+      /* Для плавности и чтобы не было двойных скроллбаров */
+      margin-bottom: 1rem;
+    }
+    #itemsTable {
+      margin-bottom: 0;
+    }
+  </style>
+  <script>
+    // Показ/скрытие блока фильтров с анимацией
+    document.addEventListener('DOMContentLoaded', function () {
+      const toggleBtn = document.getElementById('toggleFiltersBtn');
+      const filtersBlock = document.getElementById('filtersBlock');
+      if (toggleBtn && filtersBlock) {
+        toggleBtn.addEventListener('click', function () {
+          if (filtersBlock.classList.contains('show')) {
+            filtersBlock.classList.remove('show');
+            setTimeout(() => { filtersBlock.style.display = 'none'; }, 400);
+          } else {
+            filtersBlock.style.display = 'block';
+            // Нужно чтобы display: block применился до добавления класса show
+            setTimeout(() => { filtersBlock.classList.add('show'); }, 10);
+          }
+        });
+      }
+      // Сброс фильтров
+      const clearBtn = document.getElementById('clearFiltersBtn');
+      const filtersForm = document.getElementById('filtersForm');
+      if (clearBtn && filtersForm) {
+        clearBtn.addEventListener('click', function () {
+          filtersForm.reset();
+        });
+      }
+      // Если фильтры были открыты при обновлении страницы, скрыть их
+      if (filtersBlock && filtersBlock.classList.contains('show')) {
+        filtersBlock.classList.remove('show');
+        filtersBlock.style.display = 'none';
+      }
+    });
+  </script>
+{% include "modals/type_modal.html" %}
+{% include "modals/fields_modal.html" %}
+{% include "modals/add_item_modal.html" %}
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="static/scripts/substance/substance.js"></script>
+<script src="static/scripts/substance/init.js"></script>
+<script src="static/scripts/substance/filters.js"></script>

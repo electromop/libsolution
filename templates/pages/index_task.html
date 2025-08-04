@@ -1,0 +1,11 @@
+{# index.html (главная страница) #}
+{% extends "base.html" %}
+{% block title %}Вещества{% endblock %}
+{% block main %}
+    <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4" style="height: 100vh; display: flex; flex-direction: column; overflow: hidden;">
+        <div style="position: relative; flex-shrink: 0;">
+            {% include "toolbar.html" %}
+        </div>
+        {% include "content/tasks.html" %}
+    </main>
+{% endblock %}

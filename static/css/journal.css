@@ -1,0 +1,39 @@
+.notion-document {
+    /* background-color: #f8f9fa; */
+    border-radius: 5px;
+    padding: 20px;
+    width: 70vw;
+}
+.notion-toolbar .btn {
+    margin-right: 5px;
+}
+/* #document-content {
+    background-color: white;
+    border-radius: 5px;
+} */
+.notion-block {
+    margin-bottom: 10px;
+    position: relative;
+    outline: none; /* Убираем выделение по краям при клике */
+}
+.notion-block[contenteditable]:empty:before {
+    content: attr(placeholder);
+    color: #aaa;
+}
+.btn-outline-danger {
+    display: inline-block;
+}
+.placeholder-text {
+    color: #aaa;
+}
+
+.journal-link {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.folder-toggle {
+    cursor: pointer;
+}

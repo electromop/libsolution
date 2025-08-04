@@ -1,0 +1,21 @@
+{# type_modal.html #}
+<!-- Модальное окно создания типа (Bootstrap) -->
+<div class="modal fade" id="typeModal" tabindex="-1" aria-labelledby="typeModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h1 class="modal-title fs-5" id="typeModalLabel">Создать тип</h1>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+        <form id="newTypeForm">
+          <div class="modal-body">
+            <input class="form-control mb-2" name="name" placeholder="Название типа" required />
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-success" type="submit">Создать</button>
+            <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Отмена</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>

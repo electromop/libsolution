@@ -1,0 +1,292 @@
+
+
+<div class="container py-4">
+  <div class="row mb-3">
+    <div class="col-12 d-flex align-items-center gap-3">
+      <h2 class="mb-0 fw-semibold text-dark" style="font-size: 2rem;">
+        Задачи импорта веществ
+      </h2>
+      <button class="btn btn-primary btn-sm ms-auto" data-bs-toggle="modal" data-bs-target="#importModal">
+        <i class="bi bi-upload"></i> Новый импорт
+      </button>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-header bg-white fw-bold">
+          Активные задачи импорта
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table align-middle" id="importTasksTable">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Статус</th>
+                  <th>Импортировано</th>
+                  <th>Всего</th>
+                  <th>Ошибка</th>
+                  <th>Создана</th>
+                  <th>Обновлена</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Задачи будут подгружены через JS -->
+              </tbody>
+            </table>
+          </div>
+          <div id="noTasksMsg" class="text-muted text-center d-none">Нет задач импорта</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Модальное окно для нового импорта -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="importForm" enctype="multipart/form-data" autocomplete="off">
+      <div class="modal-header">
+        <h5 class="modal-title" id="importModalLabel">Импорт веществ из CSV</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="typeIdSelect" class="form-label">Тип вещества</label>
+          <select class="form-select" id="typeIdSelect" name="type_id" required>
+            <option value="">Выберите тип...</option>
+            <!-- Типы будут подгружены через JS -->
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="csvFileInput" class="form-label">CSV файл</label>
+          <input type="file" class="form-control" id="csvFileInput" name="file" accept=".csv" required>
+        </div>
+        <div class="alert alert-info small" id="csvFormatExample">
+          <span>Выберите тип вещества, чтобы увидеть пример формата CSV.</span>
+        </div>
+        <div id="importFormError" class="alert alert-danger d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-success">
+          <i class="bi bi-upload"></i> Импортировать
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const API_BASE = "/import/items/";
+const TYPES_API = "/types/";
+
+// Функция для преобразования ISO строки UTC в локальное время пользователя
+function formatDate(dt) {
+  if (!dt) return "";
+  // Преобразуем строку в объект Date, учитывая, что dt в формате UTC (например, "2024-06-09T13:00:00.000000Z")
+  // Если dt не заканчивается на Z, добавим Z (для совместимости)
+  let iso = dt;
+  if (typeof iso === "string" && !iso.endsWith("Z")) {
+    iso += "Z";
+  }
+  const d = new Date(iso);
+  // toLocaleString автоматически покажет в локальном времени пользователя
+  return d.toLocaleString("ru-RU");
+}
+
+function statusBadge(status) {
+  // Переводим статус на русский
+  let color = "secondary";
+  let text = status;
+  if (status === "pending")      { color = "warning"; text = "В ожидании"; }
+  else if (status === "running") { color = "info";    text = "Выполняется"; }
+  else if (status === "finished"){ color = "success"; text = "Завершено"; }
+  else if (status === "error")   { color = "danger";  text = "Ошибка"; }
+  return `<span class="badge bg-${color}">${text}</span>`;
+}
+
+function renderTaskRow(task) {
+  return `<tr data-task-id="${task.id}">
+    <td class="text-monospace small">${task.id}</td>
+    <td>${statusBadge(task.status)}</td>
+    <td>${task.imported}</td>
+    <td>${task.total}</td>
+    <td>
+      ${task.error ? `<span class="text-danger" title="${task.error.replace(/"/g, '&quot;')}"><i class="bi bi-exclamation-triangle"></i></span>` : ""}
+    </td>
+    <td>${formatDate(task.created_at)}</td>
+    <td>${formatDate(task.updated_at)}</td>
+    <td>
+      <button class="btn btn-sm btn-outline-secondary" onclick="showTaskDetails('${task.id}')">
+        <i class="bi bi-info-circle"></i>
+      </button>
+    </td>
+  </tr>`;
+}
+
+function fetchTask(taskId) {
+  return fetch(API_BASE + encodeURIComponent(taskId))
+    .then(r => {
+      if (!r.ok) throw new Error("Ошибка загрузки задачи");
+      return r.json();
+    });
+}
+
+function fetchTasks() {
+  fetch(API_BASE)
+    .then(r => {
+      if (!r.ok) throw new Error("Ошибка загрузки задач");
+      return r.json();
+    })
+    .then(tasks => {
+      const tbody = document.querySelector("#importTasksTable tbody");
+      if (!tasks.length) {
+        tbody.innerHTML = "";
+        document.getElementById("noTasksMsg").classList.remove("d-none");
+        return;
+      }
+      document.getElementById("noTasksMsg").classList.add("d-none");
+      tbody.innerHTML = tasks.map(renderTaskRow).join("");
+      // Сохраняем id задач в localStorage для обратной совместимости
+      localStorage.setItem("importTaskIds", JSON.stringify(tasks.map(t => t.id)));
+    })
+    .catch(() => {
+      // В случае ошибки показываем сообщение
+      document.querySelector("#importTasksTable tbody").innerHTML = "";
+      document.getElementById("noTasksMsg").classList.remove("d-none");
+    });
+}
+
+setInterval(fetchTasks, 3000);
+document.addEventListener("DOMContentLoaded", function() {
+  fetchTasks();
+  fetchTypes();
+});
+
+// --- Работа с типами веществ ---
+let typesCache = [];
+
+function fetchTypes() {
+  fetch(TYPES_API)
+    .then(r => r.json())
+    .then(types => {
+      typesCache = types;
+      const select = document.getElementById("typeIdSelect");
+      select.innerHTML = '<option value="">Выберите тип...</option>';
+      types.forEach(type => {
+        const opt = document.createElement("option");
+        opt.value = type.id;
+        opt.textContent = type.name;
+        select.appendChild(opt);
+      });
+    });
+}
+
+function getTypeById(id) {
+  return typesCache.find(t => t.id === id);
+}
+
+function getCsvExampleForType(type) {
+  if (!type) return "Выберите тип вещества, чтобы увидеть пример формата CSV.";
+  // Всегда есть колонка name, далее - поля типа
+  let columns = ["name"];
+  let exampleRow = ["Вещество 1"];
+  if (type.fields && type.fields.length) {
+    type.fields.forEach(f => {
+      columns.push(f.name);
+      // Пример значения в зависимости от типа
+      let val = "";
+      if (f.field_type === "float") val = "1.23";
+      else if (f.field_type === "enum") val = "значение";
+      else val = "текст";
+      exampleRow.push(val);
+    });
+  }
+  let example =
+    `<b>Пример CSV:</b><br><code>${columns.join(",")}</code><br><code>${exampleRow.join(",")}</code>`;
+  example += `<br><span class="text-muted">Обязательное поле: <b>name</b>. Остальные поля соответствуют выбранному типу.</span>`;
+  return example;
+}
+
+document.getElementById("typeIdSelect").addEventListener("change", function() {
+  const typeId = this.value;
+  const type = getTypeById(typeId);
+  const exampleDiv = document.getElementById("csvFormatExample");
+  if (!typeId) {
+    exampleDiv.innerHTML = "Выберите тип вещества, чтобы увидеть пример формата CSV.";
+    return;
+  }
+  exampleDiv.innerHTML = getCsvExampleForType(type);
+});
+
+// --- Обработка формы импорта ---
+document.getElementById("importForm").addEventListener("submit", function(e) {
+  e.preventDefault();
+  const form = e.target;
+  const typeId = form.type_id.value.trim();
+  const fileInput = form.file;
+  const errorDiv = document.getElementById("importFormError");
+  errorDiv.classList.add("d-none");
+  errorDiv.textContent = "";
+
+  if (!typeId || !fileInput.files.length) {
+    errorDiv.textContent = "Заполните все поля";
+    errorDiv.classList.remove("d-none");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("type_id", typeId);
+  formData.append("file", fileInput.files[0]);
+
+  form.querySelector("button[type=submit]").disabled = true;
+
+  fetch(API_BASE, {
+    method: "POST",
+    body: formData
+  })
+  .then(r => {
+    form.querySelector("button[type=submit]").disabled = false;
+    if (!r.ok) return r.json().then(j => { throw new Error(j.detail || "Ошибка импорта"); });
+    return r.json();
+  })
+  .then(task => {
+    let ids = JSON.parse(localStorage.getItem("importTaskIds") || "[]");
+    if (!ids.includes(task.id)) {
+      ids.unshift(task.id);
+      if (ids.length > 10) ids = ids.slice(0, 10);
+      localStorage.setItem("importTaskIds", JSON.stringify(ids));
+    }
+    fetchTasks();
+    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById("importModal"));
+    modal.hide();
+    form.reset();
+    document.getElementById("csvFormatExample").innerHTML = "Выберите тип вещества, чтобы увидеть пример формата CSV.";
+  })
+  .catch(err => {
+    errorDiv.textContent = err.message;
+    errorDiv.classList.remove("d-none");
+  });
+});
+
+// Детали задачи (простое alert, можно сделать модалку)
+window.showTaskDetails = function(taskId) {
+  fetchTask(taskId)
+    .then(task => {
+      // Перевод статусов на русский
+      let statusRu = task.status;
+      if (statusRu === "pending") statusRu = "В ожидании";
+      else if (statusRu === "running") statusRu = "Выполняется";
+      else if (statusRu === "finished") statusRu = "Завершено";
+      else if (statusRu === "error") statusRu = "Ошибка";
+      let msg = `ID: ${task.id}\nСтатус: ${statusRu}\nИмпортировано: ${task.imported} из ${task.total}\nСоздана: ${formatDate(task.created_at)}\nОбновлена: ${formatDate(task.updated_at)}`;
+      if (task.error) msg += `\nОшибка:\n${task.error}`;
+      alert(msg);
+    })
+    .catch(() => alert("Не удалось загрузить задачу"));
+};
+</script>

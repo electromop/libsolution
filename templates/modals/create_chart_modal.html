@@ -1,0 +1,60 @@
+{# create_chart_modal.html #}
+<!-- Модальное окно для создания/редактирования графика -->
+<div class="modal fade" id="createChartModal" tabindex="-1" aria-labelledby="createChartModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <form class="modal-content" id="chartForm">
+      <div class="modal-header">
+        <h5 class="modal-title" id="createChartModalLabel">Создать график</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="typeSelect" class="form-label">Тип вещества</label>
+          <select class="form-select" id="typeSelect" name="type_id" required>
+            <option value="">Выберите тип...</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="chartName" class="form-label">Название графика</label>
+          <input type="text" class="form-control" id="chartName" name="name" required>
+        </div>
+        <div class="mb-3">
+          <label for="chartType" class="form-label">Тип графика</label>
+          <select class="form-select" id="chartType" name="chart_type" required>
+            <option value="line">Линейный</option>
+            <option value="bar">Столбчатый</option>
+            <option value="scatter">Точечный</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="xField" class="form-label">Ось X (поле)</label>
+          <select class="form-select" id="xField" name="x_field" required>
+            <option value="">Выберите поле...</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="yFields" class="form-label">Ось Y (поля)</label>
+          <select class="form-select" id="yFields" name="y_fields" multiple required size="5">
+            <!-- Опции будут подгружены динамически -->
+          </select>
+          <div class="form-text">Выберите одно или несколько полей для оси Y</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Фильтры</label>
+          <!-- Визуальный конструктор фильтра -->
+          <div id="filterBuilder" class="mb-2"></div>
+          <button type="button" class="btn btn-outline-secondary btn-sm mb-2" id="addFilterRow">
+            <i class="bi bi-plus"></i> Добавить фильтр
+          </button>
+          <label for="filters" class="form-label d-block mt-2">Фильтры (JSON, опционально)</label>
+          <textarea class="form-control" id="filters" name="filters" rows="2" placeholder='{"created_at_from": "2024-01-01"}'></textarea>
+          <div class="form-text">Вы можете использовать визуальный конструктор или ввести фильтр вручную в формате JSON</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>

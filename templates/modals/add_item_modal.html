@@ -1,0 +1,49 @@
+{# add_item_modal.html #}
+<!-- Модальное окно для добавления нового вещества -->
+<div class="modal fade" id="addItemModal" tabindex="-1" aria-labelledby="addItemModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content shadow">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="addItemModalLabel">Добавить новое вещество</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+        </div>
+        <form id="addItemForm">
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="itemName" class="form-label">Название вещества <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="itemName" name="name" placeholder="Введите название" required>
+            </div>
+            <div class="mb-3">
+              <label for="itemDescription" class="form-label">Описание</label>
+              <textarea class="form-control" id="itemDescription" name="description" rows="2" placeholder="Описание вещества"></textarea>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label for="itemAmount" class="form-label">Количество</label>
+                <input type="number" class="form-control" id="itemAmount" name="amount" placeholder="0.0">
+              </div>
+              <div class="col-md-4">
+                <label for="itemUnit" class="form-label">Ед. изм.</label>
+                <input type="text" class="form-control" id="itemUnit" name="unit" placeholder="г, мл, шт...">
+              </div>
+              <div class="col-md-4">
+                <label for="itemDate" class="form-label">Дата создания</label>
+                <input type="date" class="form-control" id="itemDate" name="created_at">
+              </div>
+            </div>
+            <div class="form-check mt-3">
+              <input class="form-check-input" type="checkbox" value="" id="itemIsActive" name="is_active">
+              <label class="form-check-label" for="itemIsActive">
+                Активно
+              </label>
+            </div>
+            <!-- Здесь позже будут динамически добавляться поля -->
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+            <button type="submit" class="btn btn-success">Добавить</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
