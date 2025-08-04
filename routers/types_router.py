@@ -48,6 +48,18 @@ def index_substance(request: Request, type_id: Optional[str] = None, db: Session
             return templates.TemplateResponse("pages/index.html", {"request": request, "title": "Вещества"})
     else:
         return templates.TemplateResponse("pages/index.html", {"request": request, "title": "Вещества"})
+    
+@router.get("/", response_class=HTMLResponse)
+def index_index_substance(request: Request, type_id: Optional[str] = None, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    if type_id:
+        type_obj = db.query(SubstanceType).filter(SubstanceType.id == type_id).first()
+        if type_obj:
+            return templates.TemplateResponse("pages/index.html", {"request": request, "title": type_obj.name})
+        else:
+            return templates.TemplateResponse("pages/index.html", {"request": request, "title": "Вещества"})
+    else:
+        return templates.TemplateResponse("pages/index.html", {"request": request, "title": "Вещества"})
+
 
 @router.post("/types/", response_model=TypeOut)
 def create_type(payload: TypeCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
