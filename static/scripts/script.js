@@ -1,4 +1,4 @@
-let ws = new WebSocket("ws://" + location.host + "/ws");
+let ws = new WebSocket("wss://" + location.host + "/ws");
 const editor = document.getElementById("editor");
 let userId, userColor, isTyping=false, ignoreChange=false;
 
