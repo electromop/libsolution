@@ -7,11 +7,18 @@ from datetime import datetime, UTC
 
 import uuid
 
+# ВАЖНО: Добавляем параметр sslmode='disable' для устранения ошибки SSL connection has been closed unexpectedly
 SQLALCHEMY_DATABASE_URL = "postgresql://gen_user:1^GDoFswOw0=).@77.232.135.76:5432/Libsolution"
 
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL
+    SQLALCHEMY_DATABASE_URL,
+    pool_size=10,
+    max_overflow=2,
+    pool_recycle=300,
+    pool_pre_ping=True,
+    pool_use_lifo=True
 )
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():

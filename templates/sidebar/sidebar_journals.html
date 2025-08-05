@@ -475,6 +475,8 @@ document.getElementById('createFolderModalForm').addEventListener('submit', asyn
     margin-left: 22px;
     font-size: 0.97em;
     transition: background 0.12s;
+    position: relative;
+    min-height: 28px;
 }
 .journal-minimal:hover {
     background: #f8f9fa;
@@ -484,18 +486,54 @@ document.getElementById('createFolderModalForm').addEventListener('submit', asyn
     margin-right: 5px;
     color: #adb5bd;
 }
+/* Название журнала занимает максимум ширины, не зарезервировано место под 3 точки */
 .journal-minimal .journal-link {
     color: #212529;
     text-decoration: none;
-    flex: 1 1 auto;
+    flex: 1 1 0%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
+    margin-right: 0;
 }
+
+/* Контейнер для кнопки 3 точки, не резервирует место, не влияет на ширину названия */
 .journal-actions-dropdown {
     position: relative;
+    display: flex;
+    align-items: center;
+    height: 22px;
+    margin-left: 2px;
+    /* min-width и width убраны, чтобы не мешать названию */
+    flex: 0 0 auto;
+}
+
+/* Кнопка 3 точки скрыта по умолчанию, появляется только при наведении */
+.journal-actions-btn {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-60%);
+    padding: 0 4px !important;
+    height: 20px !important;
+    min-width: 20px !important;
+    font-size: 1.05em !important;
+    line-height: 1 !important;
+    border-radius: 3px !important;
+    z-index: 2;
+    background: #fff;
+    border: none;
+}
+
+/* Показываем кнопку только при наведении на .journal-minimal */
+.journal-minimal:hover .journal-actions-btn,
+.journal-minimal:focus-within .journal-actions-btn {
     display: inline-block;
 }
+
+/* По умолчанию скрываем меню опций */
 .journal-actions-dropdown .custom-dropdown-menu {
     display: none;
     position: fixed;
@@ -508,10 +546,13 @@ document.getElementById('createFolderModalForm').addEventListener('submit', asyn
     padding: 0.3rem 0;
     font-size: 0.97em;
 }
+
+/* Показываем меню опций, когда у него есть класс show */
 .journal-actions-dropdown .custom-dropdown-menu.show {
     display: block;
     animation: fadeIn 0.12s;
 }
+
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-5px);}
     to { opacity: 1; transform: translateY(0);}
@@ -525,6 +566,12 @@ document.getElementById('createFolderModalForm').addEventListener('submit', asyn
     padding: 0.4rem 1rem;
     cursor: pointer;
     white-space: nowrap;
+    display: none;
+}
+/* Показываем .dropdown-item только при наведении на .journal-actions-dropdown */
+.journal-actions-dropdown:hover .custom-dropdown-menu .dropdown-item,
+.journal-actions-dropdown:focus-within .custom-dropdown-menu .dropdown-item {
+    display: block;
 }
 .journal-actions-dropdown .custom-dropdown-menu .dropdown-item:hover {
     background: #f8f9fa;
