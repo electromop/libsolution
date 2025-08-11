@@ -27,7 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (timelineManager) window.timelineManager = timelineManager;
 
     const wsManager = new WebSocketBlockManager(
-        `ws://${location.host}/ws/journal/${journalId}`,
+        `wss://${location.host}/ws/journal/${journalId}`,
         blockEditor,
         userListManager
     );
