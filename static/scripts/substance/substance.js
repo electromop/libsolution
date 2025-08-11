@@ -140,6 +140,10 @@ class TypeManager {
     const res = await fetch(`/items/?type_id=${typeObj.id}`);
     const items = await res.json();
     this.renderItemsTable(items, typeObj);
+    // Если фильтры открыты и инициализированы — подгрузим динамические по текущему типу
+    if (window.filtersManager) {
+      await window.filtersManager.setType(typeObj.id);
+    }
     this.renderItemForm(typeObj);
   }
 
@@ -218,7 +222,8 @@ class TypeManager {
 
           typeObj.fields.forEach(f => {
             const td = document.createElement('td');
-            td.textContent = item.data[f.name] ?? '-';
+            const v = (item.data && (item.data[f.id] ?? item.data[f.name])) ?? null;
+            td.textContent = v !== null && v !== undefined && v !== '' ? v : '-';
             row.appendChild(td);
           });
           tbody.appendChild(row);
@@ -446,11 +451,11 @@ class TypeManager {
         const el = addItemForm.querySelector(`[name="${f.name}"]`);
         if (!el) continue;
         if (el.type === 'checkbox') {
-          data[f.name] = el.checked;
+          data[f.id] = el.checked;
         } else if (el.type === 'number') {
-          data[f.name] = el.value === '' ? null : (el.step && el.step !== '1' ? parseFloat(el.value) : parseInt(el.value));
+          data[f.id] = el.value === '' ? null : (el.step && el.step !== '1' ? parseFloat(el.value) : parseInt(el.value));
         } else {
-          data[f.name] = el.value;
+          data[f.id] = el.value;
         }
       }
 
@@ -459,9 +464,24 @@ class TypeManager {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type_id: typeObj.id, name: nameValue, data })
       });
-      // После добавления можно закрыть модалку и обновить список
-      const modal = bootstrap.Modal.getOrCreateInstance(addItemModal);
-      modal.hide();
+      // После добавления корректно скрываем модалку и убираем backdrop
+      try {
+        const modalInstance = (window.bootstrap && window.bootstrap.Modal)
+          ? (window.bootstrap.Modal.getInstance(addItemModal) || new window.bootstrap.Modal(addItemModal))
+          : null;
+        if (modalInstance) {
+          modalInstance.hide();
+        } else if (typeof $ !== 'undefined' && $(addItemModal).modal) {
+          $(addItemModal).modal('hide');
+        } else {
+          addItemModal.style.display = 'none';
+        }
+      } catch (_) {
+        addItemModal.style.display = 'none';
+      }
+      document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+      document.body.classList.remove('modal-open');
+      document.body.style.overflow = '';
       this.renderTypeView();
     //   ModalManager.renderFieldsList();
     
@@ -528,6 +548,7 @@ class TypeManager {
 class ModalManager {
   constructor(typeManager) {
     this.typeManager = typeManager;
+    this.editingFieldId = null;
     this.init();
   }
 
@@ -609,38 +630,141 @@ class ModalManager {
       tbody.appendChild(tr);
       return;
     }
-    typeObj.fields.forEach((f, idx) => {
+    typeObj.fields.forEach((f) => {
       const tr = document.createElement('tr');
 
-      // Название
-      const tdName = document.createElement('td');
-      tdName.textContent = f.name;
-      tr.appendChild(tdName);
+      if (this.editingFieldId === f.id) {
+        // Режим редактирования: инпуты
+        const tdName = document.createElement('td');
+        tdName.innerHTML = `<input id="edit_name_${f.id}" class="form-control form-control-sm" type="text" value="${f.name}">`;
+        tr.appendChild(tdName);
 
-      // Тип
-      const tdType = document.createElement('td');
-      tdType.textContent = f.field_type;
-      tr.appendChild(tdType);
+        const tdType = document.createElement('td');
+        const select = document.createElement('select');
+        select.id = `edit_field_type_${f.id}`;
+        select.className = 'form-select form-select-sm';
+        ['string','int','float','bool','date','enum'].forEach(opt => {
+          const o = document.createElement('option');
+          o.value = opt; o.textContent = opt; if (opt === f.field_type) o.selected = true; select.appendChild(o);
+        });
+        tdType.appendChild(select);
+        tr.appendChild(tdType);
 
-      // Ед. изм.
-      const tdUnit = document.createElement('td');
-      tdUnit.textContent = f.unit ? f.unit : '';
-      tr.appendChild(tdUnit);
+        const tdUnit = document.createElement('td');
+        tdUnit.innerHTML = `<input id="edit_unit_${f.id}" class="form-control form-control-sm" type="text" value="${f.unit || ''}">`;
+        tr.appendChild(tdUnit);
 
-      // Обязательное
-      const tdRequired = document.createElement('td');
-      tdRequired.innerHTML = f.is_required
-        ? '<span class="badge bg-success">Да</span>'
-        : '<span class="badge bg-secondary">Нет</span>';
-      tr.appendChild(tdRequired);
+        const tdRequired = document.createElement('td');
+        tdRequired.innerHTML = `
+          <div class="form-check">
+            <input id="edit_is_required_${f.id}" class="form-check-input" type="checkbox" ${f.is_required ? 'checked' : ''}>
+            <label class="form-check-label" for="edit_is_required_${f.id}">Да</label>
+          </div>`;
+        tr.appendChild(tdRequired);
 
-      // Действия (пока пусто, можно добавить кнопки позже)
-      const tdActions = document.createElement('td');
-      // tdActions.innerHTML = ''; // Здесь можно добавить кнопки "Удалить", "Редактировать" и т.д.
-      tr.appendChild(tdActions);
+        const tdActions = document.createElement('td');
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'btn btn-sm btn-primary me-2';
+        saveBtn.textContent = 'Сохранить';
+        saveBtn.onclick = () => this.saveEditField(f.id);
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'btn btn-sm btn-secondary';
+        cancelBtn.textContent = 'Отмена';
+        cancelBtn.onclick = () => this.cancelEditField();
+
+        tdActions.appendChild(saveBtn);
+        tdActions.appendChild(cancelBtn);
+        tr.appendChild(tdActions);
+      } else {
+        // Обычный режим: текст + действия
+        const tdName = document.createElement('td');
+        tdName.textContent = f.name;
+        tr.appendChild(tdName);
+
+        const tdType = document.createElement('td');
+        tdType.textContent = f.field_type;
+        tr.appendChild(tdType);
+
+        const tdUnit = document.createElement('td');
+        tdUnit.textContent = f.unit ? f.unit : '';
+        tr.appendChild(tdUnit);
+
+        const tdRequired = document.createElement('td');
+        tdRequired.innerHTML = f.is_required ? '<span class="badge bg-success">Да</span>' : '<span class="badge bg-secondary">Нет</span>';
+        tr.appendChild(tdRequired);
+
+        const tdActions = document.createElement('td');
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'btn btn-sm btn-outline-primary me-2';
+        editBtn.textContent = 'Изменить';
+        editBtn.onclick = () => this.startEditField(f.id);
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'btn btn-sm btn-outline-danger';
+        delBtn.textContent = 'Удалить';
+        delBtn.onclick = () => this.deleteField(typeObj, f);
+
+        tdActions.appendChild(editBtn);
+        tdActions.appendChild(delBtn);
+        tr.appendChild(tdActions);
+      }
 
       tbody.appendChild(tr);
     });
+
+    // Блокируем форму добавления, если редактируем поле
+    const addFieldForm = document.getElementById('addFieldForm');
+    if (addFieldForm) {
+      const controls = addFieldForm.querySelectorAll('input, select, button');
+      controls.forEach(el => { el.disabled = this.editingFieldId !== null; });
+    }
+  }
+
+  startEditField(fieldId) {
+    this.editingFieldId = fieldId;
+    this.renderFieldsList();
+  }
+
+  cancelEditField() {
+    this.editingFieldId = null;
+    this.renderFieldsList();
+  }
+
+  async saveEditField(fieldId) {
+    const currentTypeId = this.typeManager.currentType;
+    const nameEl = document.getElementById(`edit_name_${fieldId}`);
+    const typeEl = document.getElementById(`edit_field_type_${fieldId}`);
+    const unitEl = document.getElementById(`edit_unit_${fieldId}`);
+    const reqEl = document.getElementById(`edit_is_required_${fieldId}`);
+    const payload = {
+      name: nameEl ? nameEl.value.trim() : undefined,
+      field_type: typeEl ? typeEl.value : undefined,
+      unit: unitEl ? (unitEl.value.trim() || null) : undefined,
+      is_required: reqEl ? !!reqEl.checked : undefined,
+    };
+    await fetch(`/types/${currentTypeId}/fields/${fieldId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    await this.typeManager.fetchTypes();
+    this.editingFieldId = null;
+    this.renderFieldsList();
+    this.typeManager.renderTypeView();
+  }
+
+  async deleteField(typeObj, field) {
+    const currentTypeId = this.typeManager.currentType;
+    if (!confirm('Точно удалить поле? Это необратимо.')) return;
+    await fetch(`/types/${currentTypeId}/fields/${field.id}`, { method: 'DELETE' });
+    await this.typeManager.fetchTypes();
+    this.renderFieldsList();
+    this.typeManager.renderTypeView();
   }
 
   async addField(e) {
@@ -666,5 +790,13 @@ class ModalManager {
     });
     await this.typeManager.fetchTypes();
     this.renderFieldsList();
+    // Перерисовываем таблицу и форму, чтобы новое поле сразу появилось в UI
+    this.typeManager.renderTypeView();
+    // Сброс полей формы после успешного добавления
+    try {
+      form.reset();
+      const nameInput = form.querySelector('[name="name"]');
+      if (nameInput) nameInput.focus();
+    } catch (_) {}
   }
 }

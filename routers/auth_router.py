@@ -24,7 +24,11 @@ async def register(
     user = create_user(email, password)
     if not user:
         return templates.TemplateResponse("pages/index_register.html", {"request": request, "error": "Пользователь с такой почтой уже существует", "success": None})
-    return templates.TemplateResponse("pages/index_register.html", {"request": request, "error": None, "success": "Регистрация успешна! Теперь вы можете войти."})
+    # Автоматический логин и редирект на страницу веществ
+    access_token = create_access_token(data={"sub": user["email"]})
+    response = RedirectResponse(url="/substance", status_code=302)
+    response.set_cookie("access_token", f"Bearer {access_token}", httponly=True)
+    return response
 
 @router.get("/login")
 async def login_page(request: Request):

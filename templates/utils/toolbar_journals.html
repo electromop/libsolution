@@ -188,6 +188,7 @@
             <div class="btn-group">
                 <button class="btn btn-outline-secondary" onclick="importDocument()"><i class="bi bi-upload"></i></button>
                 <button class="btn btn-outline-secondary" onclick="printDocument()"><i class="bi bi-printer"></i></button>
+                <button class="btn btn-outline-danger" onclick="deleteCurrentJournal()" title="Удалить журнал"><i class="bi bi-trash"></i></button>
             </div>
         </div>
     </div>
@@ -306,6 +307,24 @@
             document.body.innerHTML = printContents;
             window.print();
             document.body.innerHTML = originalContents;
+        }
+        async function deleteCurrentJournal() {
+            try {
+                const match = window.location.pathname.match(/\/journal\/(\d+)/);
+                const journalId = match ? match[1] : null;
+                if (!journalId) return;
+                if (!confirm('Удалить журнал? Это действие необратимо.')) return;
+                const res = await fetch(`/api/journals/${journalId}`, { method: 'DELETE' });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    alert(data?.message || 'Ошибка удаления');
+                    return;
+                }
+                // Перенаправим на список журналов
+                window.location.href = '/journals';
+            } catch (e) {
+                alert('Ошибка удаления');
+            }
         }
         
         // Функция для генерации uuid (v4)

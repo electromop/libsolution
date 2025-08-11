@@ -1,0 +1,56 @@
+{# sidebar_profile.html #}
+<nav id="sidebar" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse shadow-sm" style="padding-left: 0; padding-right: 0;">
+  <div class="row g-0">
+    <!-- Минималистичный sidebar с иконками -->
+    <div class="col-2 px-0" style="border-right: 1px solid #e5e5e5; background: #f8f9fa;">
+        <div class="d-flex flex-column align-items-center py-3" style="height: 100vh;">
+            <a class="mb-3 text-muted" href="#" title="Поиск" data-bs-toggle="modal" data-bs-target="#searchModal">
+                <i class="bi bi-search" style="font-size: 1.3rem;"></i>
+            </a>
+            <a class="mb-3 text-muted" href="/dashboard" title="Дэшборд" tabindex="-1">
+                <i class="bi bi-speedometer2" style="font-size: 1.3rem;"></i>
+            </a>
+            <a class="mb-3 text-primary" href="/substance" title="Учет">
+                <i class="bi bi-123" style="font-size: 1.3rem;"></i>
+            </a>
+            <a class="mb-3 text-muted" href="#" title="Протоколы" tabindex="-1" aria-disabled="true" style="filter: blur(2px); pointer-events: none;">
+                <i class="bi bi-archive" style="font-size: 1.3rem;"></i>
+            </a>
+            <a class="mb-3 text-muted" href="/journals" title="Журналы" tabindex="-1" aria-disabled="true">
+                <i class="bi bi-file-text" style="font-size: 1.3rem;"></i>
+            </a>
+            <a class="mb-3 text-muted" href="#" title="Инвентаризация" tabindex="-1" aria-disabled="true" style="filter: blur(2px); pointer-events: none;">
+                <i class="bi bi-box" style="font-size: 1.3rem;"></i>
+            </a>
+            <a class="mb-3 text-muted" href="/tasks" title="Задачи" tabindex="-1">
+                <i class="bi bi-list-task" style="font-size: 1.3rem;"></i>
+            </a>
+            <div class="mt-auto">
+                <a class="text-muted" href="/profile" title="Профиль">
+                    <i class="bi bi-person-circle" style="font-size: 1.3rem;"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-10 pt-3" style="padding-left: 10px; padding-right: 10px;">
+        <h6 class="mb-3 text-secondary" style="font-size: 1.1rem; font-weight: 500;">
+            <i class="bi bi-gear me-2"></i>Настройки
+        </h6>
+      <div class="list-group profile-nav">
+        <a href="/profile" class="list-group-item list-group-item-action{% if request.url.path.startswith('/profile') %} active{% endif %}">
+            <i class="bi bi-person me-2"></i>Профиль
+        </a>
+        {% if user and user.admin %}
+        <a href="/admin/logs" class="list-group-item list-group-item-action{% if request.url.path.startswith('/admin/logs') %} active{% endif %}">
+          <i class="bi bi-clipboard-data me-2"></i>Журнал событий
+        </a>
+        <a href="/admin/users" class="list-group-item list-group-item-action{% if request.url.path.startswith('/admin/users') %} active{% endif %}">
+          <i class="bi bi-people me-2"></i>Пользователи
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</nav>
+
+

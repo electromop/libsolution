@@ -26,8 +26,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const timelineManager = document.getElementById('timeline-panel') ? new TimelineManager('timeline-panel') : null;
     if (timelineManager) window.timelineManager = timelineManager;
 
+    const wsProtocol = location.protocol === 'https:' ? 'wss' : 'ws';
     const wsManager = new WebSocketBlockManager(
-        `wss://${location.host}/ws/journal/${journalId}`,
+        `${wsProtocol}://${location.host}/ws/journal/${journalId}`,
         blockEditor,
         userListManager
     );
@@ -35,6 +36,42 @@ document.addEventListener("DOMContentLoaded", () => {
     // Экспорт менеджеров наружу (используется в тулбаре)
     window.wsBlocks = wsManager;
     window.blockEditor = blockEditor;
+
+    // Lazy loading изображений: после каждого рендера блоков и при скролле
+    function initLazyImages(root = document) {
+        try {
+            const images = root.querySelectorAll('img.lazy-image[data-src]');
+            if (images.length === 0) return;
+            const io = new IntersectionObserver((entries, obs) => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) return;
+                    const img = entry.target;
+                    const src = img.getAttribute('data-src');
+                    if (!src) { obs.unobserve(img); return; }
+                    img.onload = () => {
+                        img.style.transition = 'opacity .2s ease';
+                        img.style.opacity = '1';
+                        const wrap = img.closest('.journal-image-block');
+                        if (wrap) wrap.classList.remove('loading');
+                    };
+                    img.setAttribute('src', src);
+                    img.removeAttribute('data-src');
+                    obs.unobserve(img);
+                });
+            }, { root: document.getElementById('document-content') || null, rootMargin: '100px' });
+            images.forEach(img => io.observe(img));
+        } catch (_) {}
+    }
+    // Первичная инициализация на всякий случай
+    initLazyImages(document);
+
+    // Перехват методов рендера для повторной инициализации наблюдателя
+    const _origRenderBlocks = blockEditor.renderBlocks.bind(blockEditor);
+    blockEditor.renderBlocks = (blocks) => { _origRenderBlocks(blocks); initLazyImages(blockEditor.container); };
+    const _origAddBlocks = blockEditor.addBlocks.bind(blockEditor);
+    blockEditor.addBlocks = (blocks) => { _origAddBlocks(blocks); initLazyImages(blockEditor.container); };
+    const _origUpdateBlock = blockEditor.updateBlock.bind(blockEditor);
+    blockEditor.updateBlock = (id, html, table) => { _origUpdateBlock(id, html, table); initLazyImages(blockEditor.container); };
 
     // Экспорт функции создания таблицы для тулбара
     window.createTableBlock = function(rows = 10, cols = 5) {

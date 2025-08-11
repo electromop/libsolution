@@ -178,7 +178,12 @@ def get_journal_blocks(journal_id: int):
         elif block.block_type == "image":
             image_url = data.get("image_url")
             if image_url:
-                html = f"<img src=\"{image_url}\" style=\"max-width:100%; border-radius:16px;\"/>"
+                html = (
+                    "<div class='journal-image-block loading'>"
+                    "<div class='journal-image-spinner'></div>"
+                    f"<img class='journal-image lazy-image' data-src='{image_url}' alt='' loading='lazy' style='max-width:100%; border-radius:16px; opacity:0;'/>"
+                    "</div>"
+                )
         result.append({
             "id": block.id,
             "block_type": block.block_type,
@@ -214,7 +219,12 @@ def get_journal_blocks_after(journal_id: int, after_position: int):
         elif block.block_type == "image":
             image_url = data.get("image_url")
             if image_url:
-                html = f"<img src=\"{image_url}\" style=\"max-width:100%; border-radius:16px;\"/>"
+                html = (
+                    "<div class='journal-image-block loading'>"
+                    "<div class='journal-image-spinner'></div>"
+                    f"<img class='journal-image lazy-image' data-src='{image_url}' alt='' loading='lazy' style='max-width:100%; border-radius:16px; opacity:0;'/>"
+                    "</div>"
+                )
         result.append({
             "id": block.id,
             "block_type": block.block_type,
@@ -328,7 +338,12 @@ def update_journal_block(block_id: str, html: str | None, table: dict | None = N
             }
         elif block.block_type == "image":
             url = block.data.get("image_url") if isinstance(block.data, dict) else None
-            img_html = f"<img src=\"{url}\" style=\"max-width:100%; border-radius:16px;\"/>" if url else ""
+            img_html = (
+                "<div class='journal-image-block loading'>"
+                "<div class='journal-image-spinner'></div>"
+                f"<img class='journal-image lazy-image' data-src='{url}' alt='' loading='lazy' style='max-width:100%; border-radius:16px; opacity:0;'/>"
+                "</div>"
+            ) if url else ""
             updated = {
                 "id": block.id,
                 "block_type": block.block_type,

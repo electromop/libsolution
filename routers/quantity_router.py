@@ -25,6 +25,7 @@ class QuantityChangeOut(BaseModel):
     reason: Optional[str] = None  # Причина списания
     created_at: Optional[datetime] = None  # Дата и время изменения количества
     user_id: Optional[str] = None
+    user_email: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -42,12 +43,21 @@ def change_quantity(change: QuantityChangeCreate, db: Session = Depends(get_db),
         amount=change.amount,
         reason=change.reason,
         created_at=change.created_at if change.created_at else datetime.utcnow(),
-        user_id=None  # Можно доработать для поддержки авторизации
+        user_id=current_user["id"]
     )
     db.add(new_change)
     db.commit()
     db.refresh(new_change)
-    return new_change
+    return {
+        "id": new_change.id,
+        "item_id": new_change.item_id,
+        "change_type": int(new_change.change_type),
+        "amount": new_change.amount,
+        "reason": new_change.reason,
+        "created_at": new_change.created_at,
+        "user_id": current_user["id"],
+        "user_email": current_user.get("email")
+    }
 
 @router.get("/items/{item_id}/quantity_history", response_model=List[QuantityChangeOut])
 def get_quantity_history(item_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
@@ -55,4 +65,16 @@ def get_quantity_history(item_id: str, db: Session = Depends(get_db), current_us
     changes = db.query(SubstanceQuantityChange).filter(
         SubstanceQuantityChange.item_id == item_id
     ).order_by(SubstanceQuantityChange.created_at.desc()).all()
-    return changes
+    result = []
+    for ch in changes:
+        result.append({
+            "id": ch.id,
+            "item_id": ch.item_id,
+            "change_type": int(ch.change_type),
+            "amount": ch.amount,
+            "reason": ch.reason,
+            "created_at": ch.created_at,
+            "user_id": ch.user_id,
+            "user_email": getattr(ch.user, "email", None) if ch.user else None
+        })
+    return result

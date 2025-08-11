@@ -56,6 +56,10 @@ class BlockEditorManager {
             setTimeout(() => {
                 wrapper.scrollIntoView({ behavior: 'instant', block: 'nearest' });
             }, 0);
+        } else if (type === 'image') {
+            cont.innerHTML = html || '';
+            cont.style.position = 'relative';
+            this._attachImageControls(el, cont);
         } else if (cont && cont.innerHTML !== html) {
             cont.innerHTML = html;
         }
@@ -266,7 +270,8 @@ class BlockEditorManager {
         } else if (type === 'image') {
             content.contentEditable = false;
             content.innerHTML = html || '';
-            // Ничего не отправляем автоматически для image
+            content.style.position = 'relative';
+            this._attachImageControls(div, content);
         } else {
             content.contentEditable = true;
             content.innerHTML = html || "";
@@ -275,7 +280,7 @@ class BlockEditorManager {
         div.appendChild(content);
 
         // Событие ввода: уведомляем менеджер WS
-        // Enter – создать новый блок ниже
+        // Shift+Enter – создать новый блок ниже (обычный Enter делает перенос строки)
         content.addEventListener("keydown", (e) => {
             // Удаление блока если пуст и Backspace
             if (e.key === "Backspace" && content.innerText.trim() === "") {
@@ -284,7 +289,17 @@ class BlockEditorManager {
                 const blockIdDel = div.getAttribute("data-block-id");
                 if (prev) {
                     const pc = prev.querySelector('.block-content');
-                    if (pc) pc.focus();
+                    if (pc) {
+                        pc.focus();
+                        try {
+                            const range = document.createRange();
+                            range.selectNodeContents(pc);
+                            range.collapse(false); // в конец
+                            const sel = window.getSelection();
+                            sel.removeAllRanges();
+                            sel.addRange(range);
+                        } catch (_) {}
+                    }
                 }
                 div.remove();
                 if (typeof this.onBlockDelete === "function") {
@@ -292,7 +307,7 @@ class BlockEditorManager {
                 }
                 return;
             }
-            if (type !== 'table' && type !== 'image' && e.key === "Enter" && !e.shiftKey) {
+            if (type !== 'table' && type !== 'image' && e.key === "Enter" && e.shiftKey) {
                 e.preventDefault();
                 const newTempId = this._createBlockElement(null, "paragraph", "<p><br/></p>");
                 // Перемещаем только что созданный блок сразу после текущего
@@ -385,6 +400,81 @@ class BlockEditorManager {
 
         this.container.appendChild(div);
         return tempId;
+    }
+
+    _attachImageControls(wrapper, content) {
+        try {
+            // Не дублировать
+            if (content.querySelector('.image-actions')) return;
+            const blockId = wrapper.getAttribute('data-block-id');
+            const actions = document.createElement('div');
+            actions.className = 'image-actions';
+            actions.style.position = 'absolute';
+            actions.style.top = '8px';
+            actions.style.right = '8px';
+            actions.style.display = 'flex';
+            actions.style.gap = '6px';
+            actions.style.zIndex = '2';
+
+            const changeBtn = document.createElement('button');
+            changeBtn.type = 'button';
+            changeBtn.textContent = 'Изм.';
+            changeBtn.className = 'btn btn-sm btn-primary';
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.textContent = 'Удалить';
+            delBtn.className = 'btn btn-sm btn-outline-danger';
+
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = 'image/*';
+            fileInput.style.display = 'none';
+
+            actions.appendChild(changeBtn);
+            actions.appendChild(delBtn);
+            content.appendChild(actions);
+            content.appendChild(fileInput);
+
+            // Поменять фото: загрузим в бекэнд и отправим image_url через WS
+            changeBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
+            fileInput.addEventListener('change', () => {
+                const f = fileInput.files && fileInput.files[0];
+                if (!f) return;
+                // Локальное превью
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const img = content.querySelector('img');
+                    if (img) {
+                        img.src = reader.result;
+                    }
+                };
+                reader.readAsDataURL(f);
+                // Загрузка в бекэнд
+                const m = window.location.pathname.match(/\/journal\/(\d+)/);
+                const journalId = m ? m[1] : null;
+                if (!journalId) return;
+                const form = new FormData();
+                form.append('file', f);
+                fetch(`/api/journals/${journalId}/upload_image`, { method: 'POST', body: form })
+                  .then(r => r.json())
+                  .then(data => {
+                      if (data && data.url && typeof window.wsBlocks?.sendBlockUpdate === 'function') {
+                          window.wsBlocks.sendBlockUpdate(blockId, { image_url: data.url });
+                      }
+                  })
+                  .catch(() => {});
+            });
+
+            // Удалить блок
+            delBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!confirm('Удалить блок изображения?')) return;
+                if (typeof this.onBlockDelete === 'function') {
+                    this.onBlockDelete(blockId);
+                }
+                wrapper.remove();
+            });
+        } catch (_) {}
     }
 
     // Установить порядок блоков согласно списку id

@@ -29,16 +29,16 @@ class FiltersManager {
   }
 
   // Установить текущий тип и поля (вызывается при выборе типа)
-  async setType(type) {
-    this.currentType = type;
-    if (!type || !type.id) {
+  async setType(typeId) {
+    this.currentType = typeId;
+    if (!typeId) {
       this.fields = [];
       this.renderDynamicFields();
       return;
     }
     // Получаем поля типа с сервера
     try {
-      const res = await fetch(`http://127.0.0.1:8000/types/${type.id}/fields`);
+      const res = await fetch(`/types/${typeId}/fields`);
       if (!res.ok) throw new Error('Ошибка загрузки полей типа');
       this.fields = await res.json();
       this.renderDynamicFields();
@@ -152,25 +152,23 @@ class FiltersManager {
             group.appendChild(row);
           }
           break;
-        case 'bool':
-          {
-            // Для bool: чекбокс "Да"/"Нет"
-            const formCheck = document.createElement('div');
-            formCheck.className = 'form-check';
-            const input = document.createElement('input');
-            input.type = 'checkbox';
-            input.className = 'form-check-input';
-            input.name = `field_${field.name}`;
-            input.id = `filter_${field.name}`;
-            const labelBool = document.createElement('label');
-            labelBool.className = 'form-check-label fw-semibold';
-            labelBool.htmlFor = `filter_${field.name}`;
-            labelBool.textContent = 'Да';
-            formCheck.appendChild(input);
-            formCheck.appendChild(labelBool);
-            group.appendChild(formCheck);
-          }
-          break;
+        case 'bool': {
+          // Для bool: селект с тремя состояниями: Любое / Да / Нет
+          const labelBool = document.createElement('label');
+          labelBool.className = 'form-label fw-semibold mb-2';
+          labelBool.textContent = 'Значение';
+          const select = document.createElement('select');
+          select.className = 'form-select';
+          select.name = `field_${field.name}`;
+          select.innerHTML = `
+            <option value="any">Любое</option>
+            <option value="true">Да</option>
+            <option value="false">Нет</option>
+          `;
+          group.appendChild(labelBool);
+          group.appendChild(select);
+        }
+        break;
         case 'date':
           {
             // Для даты: два поля "от" и "до"
@@ -220,16 +218,7 @@ class FiltersManager {
         data[key] = value;
       }
     }
-    // Для чекбоксов (bool) - если не отмечен, FormData не содержит, поэтому ищем вручную
-    if (this.fields && this.fields.length > 0) {
-      this.fields.forEach(field => {
-        if (field.field_type === 'bool') {
-          const name = `field_${field.name}`;
-          const input = this.form.querySelector(`[name="${name}"]`);
-          data[name] = input && input.checked ? true : false;
-        }
-      });
-    }
+    // Для bool селекта значение уже присутствует, ничего дополнительно не делаем
     return data;
   }
 

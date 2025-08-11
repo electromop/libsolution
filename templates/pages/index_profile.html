@@ -1,0 +1,74 @@
+{% extends "base_profile.html" %}
+{% block title %}Профиль{% endblock %}
+{% block main %}
+<main class="col-md-9 ms-sm-auto col-lg-10 px-md-4" style="height: 100vh; display: flex; flex-direction: column; overflow: hidden;">
+    <div style="position: relative; flex-shrink: 0;">
+        {% include "toolbar.html" %}
+    </div>
+    <div class="container py-4" style="overflow: auto;">
+        <div class="row">
+            <div class="col-lg-6">
+                <div class="card mb-4">
+                    <div class="card-header">Основное</div>
+                    <div class="card-body">
+                        <form method="post" action="/profile/update">
+                            <div class="mb-3">
+                                <label class="form-label">Email</label>
+                                <input type="email" class="form-control" name="email" value="{{ user.email }}">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Имя пользователя</label>
+                                <input type="text" class="form-control" name="username" value="{{ user.username if user.username else '' }}">
+                            </div>
+                            <button class="btn btn-primary" type="submit">Сохранить</button>
+                        </form>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">Пароль</div>
+                    <div class="card-body">
+                        <form method="post" action="/profile/password">
+                            <div class="mb-3">
+                                <label class="form-label">Текущий пароль</label>
+                                <input type="password" class="form-control" name="current_password" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Новый пароль</label>
+                                <input type="password" class="form-control" name="new_password" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Повторите новый пароль</label>
+                                <input type="password" class="form-control" name="new_password2" required>
+                            </div>
+                            <button class="btn btn-warning" type="submit">Обновить пароль</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card mb-4">
+                    <div class="card-header">Информация</div>
+                    <div class="card-body">
+                        <div class="mb-2"><strong>ID:</strong> {{ user.id }}</div>
+                        <div class="mb-2"><strong>Почта:</strong> {{ user.email }}</div>
+                        {% if user.username %}
+                        <div class="mb-2"><strong>Имя пользователя:</strong> {{ user.username }}</div>
+                        {% endif %}
+                        {% if user.created_at %}
+                        <div class="mb-2"><strong>Дата регистрации:</strong> {{ user.created_at }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+                {% endif %}
+                {% if success %}
+                <div class="alert alert-success">{{ success }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
+
+

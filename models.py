@@ -9,7 +9,8 @@ import uuid
 import os
 
 # ВАЖНО: Добавляем параметр sslmode='disable' для устранения ошибки SSL connection has been closed unexpectedly
-SQLALCHEMY_DATABASE_URL = os.getenv("DB_URL")
+# SQLALCHEMY_DATABASE_URL = os.getenv("DB_URL")
+SQLALCHEMY_DATABASE_URL = "postgresql://gen_user:1^GDoFswOw0=).@77.232.135.76:5432/Libsolution_beta"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
@@ -38,7 +39,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)  # Пароль (хэш)
     email = Column(String, unique=True, nullable=False)  # Почта
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    # admin = Column(Boolean, default=False, nullable=True)
+    admin = Column(Boolean, default=False, nullable=True)
 
     permissions = relationship("UserPermission", back_populates="user")
 
@@ -186,7 +187,22 @@ class ImportTask(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
-    
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+    id = Column(String, primary_key=True)  # UUID
+    timestamp = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+    user_id = Column(String, ForeignKey("user.id"), nullable=True)
+    email = Column(String, nullable=True)
+    method = Column(String, nullable=False)
+    path = Column(String, nullable=False)
+    action = Column(String, nullable=True)  # семантическое действие, если известно
+    entity = Column(String, nullable=True)
+    entity_id = Column(String, nullable=True)
+    status_code = Column(Integer, nullable=True)
+    ip = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    details = Column(JSON, nullable=True)
+
 Base.metadata.create_all(bind=engine)
 
 # --- Добавление тестовых папок и журналов ---

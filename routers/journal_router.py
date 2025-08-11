@@ -26,6 +26,10 @@ try:
 except Exception:  # fallback if not installed in some environments
     boto3 = None
     BotoConfig = None
+try:
+    from PIL import Image
+except Exception:
+    Image = None
 
 router = APIRouter()
 
@@ -257,9 +261,37 @@ async def upload_journal_image(
 
     # Загрузка
     try:
+        # Сжатие изображения на лету (если доступна Pillow)
         content_type = file.content_type or "application/octet-stream"
         logger.info("Начало загрузки в S3: bucket=%s, key=%s, content_type=%s", bucket, key, content_type)
-        s3.upload_fileobj(file.file, bucket, key, ExtraArgs={"ContentType": content_type, "ACL": "public-read"})
+        if Image and (content_type.startswith('image/')):
+            from io import BytesIO
+            raw = await file.read()
+            try:
+                img = Image.open(BytesIO(raw))
+                img = img.convert('RGB') if img.mode in ('RGBA', 'P') else img
+                # Лёгкая нормализация размеров до макс ширины 1920px (с сохранением пропорций)
+                max_w = int(os.getenv('IMAGE_MAX_WIDTH', '1920'))
+                if img.width > max_w:
+                    ratio = max_w / float(img.width)
+                    new_size = (max_w, int(img.height * ratio))
+                    img = img.resize(new_size, Image.LANCZOS)
+                # JPEG с разумным качеством 85
+                buf = BytesIO()
+                img.save(buf, format='JPEG', optimize=True, quality=int(os.getenv('IMAGE_JPEG_QUALITY', '85')))
+                buf.seek(0)
+                s3.upload_fileobj(buf, bucket, key if key.lower().endswith('.jpg') or key.lower().endswith('.jpeg') else key.rsplit('.',1)[0]+'.jpg',
+                                  ExtraArgs={"ContentType": "image/jpeg", "ACL": "public-read"})
+                # Если поменяли расширение на jpg — обновим key
+                if not (key.lower().endswith('.jpg') or key.lower().endswith('.jpeg')):
+                    key = key.rsplit('.',1)[0] + '.jpg'
+            except Exception:
+                logger.exception('Ошибка сжатия изображения, загружаю оригинал')
+                from io import BytesIO
+                s3.upload_fileobj(BytesIO(raw), bucket, key, ExtraArgs={"ContentType": content_type, "ACL": "public-read"})
+        else:
+            # Нет Pillow или неизвестный тип — грузим как есть
+            s3.upload_fileobj(file.file, bucket, key, ExtraArgs={"ContentType": content_type, "ACL": "public-read"})
         logger.info("Успешная загрузка в S3: key=%s", key)
     except Exception:
         logger.exception("Ошибка загрузки в S3")
@@ -273,6 +305,21 @@ async def upload_journal_image(
         public_url = f"https://{bucket}.s3.{region}.amazonaws.com/{key}"
     logger.info("Готов публичный URL: %s", public_url)
     return JSONResponse({"status": "ok", "url": public_url, "key": key})
+
+
+# --- Delete journal ---
+@router.delete("/api/journals/{journal_id}")
+async def api_delete_journal(journal_id: int, current_user: dict = Depends(get_current_user)):
+    db = SessionLocal()
+    try:
+        doc = db.query(Document).filter(Document.id == journal_id).first()
+        if not doc:
+            return JSONResponse({"status": "error", "message": "Журнал не найден"}, status_code=404)
+        db.delete(doc)
+        db.commit()
+        return JSONResponse({"status": "ok", "deleted": journal_id})
+    finally:
+        db.close()
 
 @router.get("/search")
 async def search(query: str, current_user: dict = Depends(get_current_user)):

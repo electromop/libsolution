@@ -1,7 +1,7 @@
 
 // Автоматически выделяет активный раздел в сайдбаре в зависимости от текущего URL
+// Теперь учитывает вкладки для профиля, журнала действий и управления пользователями — все они подсвечивают иконку профиля
 
-// Скрипт для выделения активной вкладки в новом сайдбаре, с логами и строгим управлением классами text-primary/text-muted
 document.addEventListener('DOMContentLoaded', function() {
     const currentPath = window.location.pathname;
     console.log('[sidebar.js] Текущий путь:', currentPath);
@@ -11,6 +11,16 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('[sidebar.js] Найдено ссылок в сайдбаре:', sidebarLinks.length);
 
     let anyActive = false;
+
+    // Пути, которые должны подсвечивать иконку профиля
+    const profileMatch = (
+        currentPath === '/profile' ||
+        currentPath.startsWith('/profile/') ||
+        currentPath === '/admin/logs' ||
+        currentPath.startsWith('/admin/logs/') ||
+        currentPath === '/admin/users' ||
+        currentPath.startsWith('/admin/users/')
+    );
 
     sidebarLinks.forEach(function(link) {
         // Снимаем все классы активности
@@ -24,8 +34,17 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        // Для вкладки "Профиль" — активна если путь совпадает с /profile, /admin/logs, /admin/users или их подстраницами
+        if (linkPath === '/profile') {
+            if (profileMatch) {
+                link.classList.add('text-primary', 'active');
+                link.classList.remove('text-muted');
+                anyActive = true;
+                console.log(`[sidebar.js] Активирована вкладка "Профиль" (${linkTitle}) по правилу /profile, /admin/logs, /admin/users`);
+            }
+        }
         // Для вкладки "Учет" (вещества) — особое правило: активна если /substance или /item
-        if (linkPath === '/substance') {
+        else if (linkPath === '/substance') {
             if (currentPath.startsWith('/substance') || currentPath.includes('/item')) {
                 link.classList.add('text-primary', 'active');
                 link.classList.remove('text-muted');

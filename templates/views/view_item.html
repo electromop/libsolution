@@ -91,6 +91,7 @@
                 <th>Операция</th>
                 <th>Количество</th>
                 <th>Причина</th>
+                <th>Пользователь</th>
               </tr>
             </thead>
             <tbody>
@@ -549,12 +550,14 @@ document.addEventListener('DOMContentLoaded', async function() {
         const op = change.change_type === 1 ? '<span class="text-success">Пополнение</span>' : '<span class="text-danger">Списание</span>';
         const amount = change.amount;
         const reason = change.reason ? change.reason : '<span class="text-muted">—</span>';
+        const user = change.user_email ? change.user_email : (change.user_id ? change.user_id : '<span class="text-muted">—</span>');
         tbody.insertAdjacentHTML('beforeend', `
           <tr>
             <td>${date}</td>
             <td>${op}</td>
             <td>${amount}</td>
             <td>${reason}</td>
+            <td>${user}</td>
           </tr>
         `);
       });

@@ -110,6 +110,10 @@ td.pointer-mode input {
 }
 .journal-spinner { width: 44px; height: 44px; border: 4px solid #e9ecef; border-top-color: #0d6efd; border-radius: 50%; animation: journalSpin 1s linear infinite; }
 @keyframes journalSpin { to { transform: rotate(360deg); } }
+/* Lazy image styles */
+.journal-image-block { position: relative; min-height: 120px; }
+.journal-image-block.loading .journal-image-spinner { display: block; }
+.journal-image-spinner { display: none; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border: 3px solid #e9ecef; border-top-color: #0d6efd; border-radius: 50%; animation: journalSpin 1s linear infinite; }
 </style>
 
 <div id="journal-wrapper" style="position: relative;">

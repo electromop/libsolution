@@ -13,6 +13,8 @@ from routers.journal_router import router as journal_router
 from routers.quantity_router import router as quantity_router
 from routers.tag_router import router as tag_router
 from routers.task_router import router as task_router
+from routers.profile_router import router as profile_router
+from routers.admin_router import router as admin_router
 from dotenv import load_dotenv
 
 load_dotenv()  # автоматически загрузит переменные из .env в os.environ
@@ -32,6 +34,9 @@ from fastapi.staticfiles import StaticFiles
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+from middleware_audit import AuditMiddleware
+app.add_middleware(AuditMiddleware)
+
 
 # Подключаем все роутеры
 app.include_router(auth_router)
@@ -44,6 +49,8 @@ app.include_router(search_router)
 app.include_router(tag_router)
 app.include_router(task_router)
 app.include_router(types_router)
+app.include_router(profile_router)
+app.include_router(admin_router)
 
 # Кастомный обработчик HTTPException для journal_router
 @app.exception_handler(HTTPException)

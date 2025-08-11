@@ -1,0 +1,69 @@
+{% extends "base_profile.html" %}
+{% block title %}Логи действий{% endblock %}
+{% block main %}
+<main class="col-md-9 ms-sm-auto col-lg-10 px-md-4" style="height: 100vh; display: flex; flex-direction: column; overflow: hidden;">
+    <div style="position: relative; flex-shrink: 0;">
+        {% include "toolbar.html" %}
+    </div>
+    <div class="container-fluid py-3" style="overflow: auto;">
+        <form class="row g-2 mb-3" method="get" action="/admin/logs">
+            <div class="col-md-3">
+                <input class="form-control" type="text" name="q" placeholder="Путь (contains)" value="{{ q }}">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" name="method">
+                    <option value="">Любой метод</option>
+                    {% for m in ["GET","POST","PUT","PATCH","DELETE"] %}
+                    <option value="{{ m }}" {% if method==m %}selected{% endif %}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <input class="form-control" type="email" name="email" placeholder="Email пользователя" value="{{ email }}">
+            </div>
+            <div class="col-md-2">
+                <input class="form-control" type="number" name="page" min="1" value="{{ page }}">
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary w-100" type="submit">Фильтр</button>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th>Время</th>
+                        <th>Email</th>
+                        <th>Событие</th>
+                        <th>Объект</th>
+                        <th>Детали</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for i in items %}
+                    <tr>
+                        <td style="white-space: nowrap;">{{ i.timestamp }}</td>
+                        <td>{{ i.email }}</td>
+                        <td>
+                            {% if i.action == 'CREATE_TYPE' %}Добавление типа{% 
+                               elif i.action == 'ADD_FIELD' %}Добавление поля{% 
+                               elif i.action == 'UPDATE_FIELD' %}Изменение поля{% 
+                               elif i.action == 'DELETE_FIELD' %}Удаление поля{% 
+                               elif i.action == 'ADD_ITEM' %}Добавление вещества{% 
+                               elif i.action == 'UPDATE_ITEM' %}Изменение вещества{% 
+                               elif i.action == 'DELETE_ITEM' %}Удаление вещества{% 
+                               elif i.action == 'NEW_COMMENT' %}Новый комментарий{% 
+                               else %}{{ i.action }}{% endif %}
+                        </td>
+                        <td>{% if i.entity %}{{ i.entity }}{% if i.entity_id %} #{{ i.entity_id }}{% endif %}{% endif %}</td>
+                        <td class="text-truncate" style="max-width: 420px;" title="{{ i.details }}">{{ i.details }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</main>
+{% endblock %}
+
+

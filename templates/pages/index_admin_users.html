@@ -1,0 +1,62 @@
+{% extends "base_profile.html" %}
+{% block title %}Пользователи{% endblock %}
+{% block main %}
+<main class="col-md-9 ms-sm-auto col-lg-10 px-md-4" style="height: 100vh; display: flex; flex-direction: column; overflow: hidden;">
+    <div style="position: relative; flex-shrink: 0;">
+        {% include "toolbar.html" %}
+    </div>
+    <div class="container-fluid py-3" style="overflow: auto;">
+        <div class="row g-3">
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">Создать пользователя</div>
+                    <div class="card-body">
+                        {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+                        {% if success %}<div class="alert alert-success">{{ success }}</div>{% endif %}
+                        <form method="post" action="/admin/users">
+                            <div class="mb-3">
+                                <label class="form-label">Email</label>
+                                <input type="email" class="form-control" name="email" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Пароль</label>
+                                <input type="password" class="form-control" name="password" required>
+                            </div>
+                            <button class="btn btn-primary" type="submit">Создать</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header">Список пользователей</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped align-middle mb-0">
+                            <thead>
+                            <tr>
+                                <th>Email</th>
+                                <th>Имя</th>
+                                <th>Админ</th>
+                                <th>Создан</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for u in items %}
+                                <tr>
+                                    <td>{{ u.email }}</td>
+                                    <td>{{ u.username or '' }}</td>
+                                    <td>{% if u.admin %}<span class="badge bg-success">Да</span>{% else %}<span class="badge bg-secondary">Нет</span>{% endif %}</td>
+                                    <td style="white-space: nowrap;">{{ u.created_at }}</td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
+
+

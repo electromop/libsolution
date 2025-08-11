@@ -52,14 +52,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Кнопка "Применить" фильтры
     if (filtersForm) {
-        filtersForm.addEventListener('submit', function(e) {
+        filtersForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             if (window.filtersManager) {
                 const filters = window.filtersManager.getFilters();
-                // Здесь можно вызвать обновление списка элементов с фильтрами
-                // Например: window.typeManager.renderTypeView(filters);
-                // Для примера просто выводим в консоль
-                console.log('Фильтры:', filters);
+                if (window.typeManager && window.typeManager.currentType) {
+                    try {
+                        const payload = { type_id: String(window.typeManager.currentType), filters };
+                        const res = await fetch('/items/filter', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        if (!res.ok) throw new Error('Ошибка применения фильтров');
+                        const items = await res.json();
+                        // Найдём объект типа по текущему id
+                        const typeObj = window.typeManager.types.find(t => String(t.id) === String(window.typeManager.currentType));
+                        if (typeObj) {
+                            window.typeManager.renderItemsTable(items, typeObj);
+                        }
+                    } catch (err) {
+                        console.error(err);
+                    }
+                }
             }
         });
     }
@@ -67,8 +82,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Кнопка "Сбросить" фильтры
     const clearFiltersBtn = document.getElementById('clearFiltersBtn');
     if (clearFiltersBtn && filtersManager) {
-        clearFiltersBtn.addEventListener('click', function() {
+        clearFiltersBtn.addEventListener('click', async function() {
             filtersManager.clearFilters();
+            // После сброса показать все элементы выбранного типа
+            if (window.typeManager && window.typeManager.currentType) {
+                try {
+                    await window.typeManager.renderTypeView();
+                } catch (e) {
+                    console.error('Не удалось перерисовать список после сброса фильтров', e);
+                }
+            }
         });
     }
 });

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 # Импорт моделей и зависимостей из основного приложения
 from models import SubstanceItemComment, get_db, User  # Предполагаем, что есть модель User
 from auth import get_current_user
+from repository.audit_repository import write_audit_log
 
 router = APIRouter()
 
@@ -52,6 +53,17 @@ def add_item_comment(
     db.add(new_comment)
     db.commit()
     db.refresh(new_comment)
+    # аудит: новый комментарий
+    write_audit_log(
+        method="POST",
+        path=f"/items/{item_id}/comments",
+        user_id=current_user['id'],
+        email=current_user.get('email'),
+        action="NEW_COMMENT",
+        entity="substance_item_comment",
+        entity_id=new_comment.id,
+        details={"item_id": item_id},
+    )
     # Загружаем пользователя через ORM связь, если она определена
     db.refresh(new_comment)
     return new_comment
