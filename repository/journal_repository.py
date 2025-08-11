@@ -1,26 +1,90 @@
-from models import SessionLocal, Document, Tag
+import re, uuid
+from models import SessionLocal, Document, Tag, DocumentBlock
 
 def get_journal_content(journal_id: int):
+    """Возвращает HTML-содержимое журнала, собирая его из блоков."""
     db = SessionLocal()
-    doc = db.query(Document).filter(Document.id == journal_id).first()
-    if not doc:
-        doc = Document(id=journal_id, content="")
-        db.add(doc)
-        db.commit()
-        content = ""
+    # Получаем все блоки, отсортированные по позиции
+    blocks = (
+        db.query(DocumentBlock)
+        .filter(DocumentBlock.document_id == journal_id)
+        .order_by(DocumentBlock.position)
+        .all()
+    )
+
+    if not blocks:
+        # Если блоков нет, пробуем вернуть устаревшее содержимое из поля content
+        doc = db.query(Document).filter(Document.id == journal_id).first()
+        if not doc:
+            doc = Document(id=journal_id, filename="")
+            db.add(doc)
+            db.commit()
+            content = ""
+        else:
+            content = doc.content or ""
     else:
-        content = doc.content or ""
+        # Конкатенируем HTML блоков в одно содержимое
+        html_parts = []
+        for block in blocks:
+            # Храним html в поле 'data' (dict) или как строку
+            if isinstance(block.data, dict):
+                html_parts.append(block.data.get("html", ""))
+            else:
+                html_parts.append(str(block.data))
+        content = "".join(html_parts)
+
     db.close()
+    print(f"\nget_journal_content: {content}")
     return content
 
 def save_journal_content(journal_id: int, content: str):
+    """Сохраняет содержимое журнала, разбивая его на блоки.
+
+    Сейчас реализована простая стратегия: HTML разделяется по тегу </p>,
+    каждая получившаяся строка считается отдельным блоком с типом "paragraph".
+    """
     db = SessionLocal()
+
+    # Гарантируем существование документа
     doc = db.query(Document).filter(Document.id == journal_id).first()
     if not doc:
-        doc = Document(id=journal_id, content=content)
+        doc = Document(id=journal_id, filename="")
         db.add(doc)
-    else:
-        doc.content = content
+        db.flush()  # Чтобы получить id
+
+    # Удаляем старые блоки
+    db.query(DocumentBlock).filter(DocumentBlock.document_id == journal_id).delete()
+
+    # Разбиваем контент на параграфы по </p>
+    parts = re.split(r"(</p>)", content, flags=re.IGNORECASE)
+    current_html = ""
+    blocks_html = []
+    for part in parts:
+        current_html += part
+        if part.lower().endswith("</p>"):
+            blocks_html.append(current_html)
+            current_html = ""
+    if current_html.strip():
+        blocks_html.append(current_html)
+
+    # Если не удалось разделить, сохраняем один блок
+    if not blocks_html:
+        blocks_html = [content]
+
+    # Создаём блоки
+    for idx, html in enumerate(blocks_html):
+        block = DocumentBlock(
+            id=str(uuid.uuid4()),
+            document_id=doc.id,
+            block_type="paragraph",
+            data={"html": html},
+            position=idx,
+        )
+        db.add(block)
+
+    # Очищаем устаревшее текстовое поле
+    doc.content = ""
+
     db.commit()
     db.close()
 
@@ -82,6 +146,224 @@ def remove_tag_from_journal(journal_id: int, tag_name: str):
         doc.tags.remove(tag)
         db.commit()
     db.close()
+
+def get_journal_blocks(journal_id: int):
+    """Возвращает список словарей блоков для фронтенда. При первом обращении выполняет миграцию\n    из устаревшего поля content, если блоков ещё нет."""
+    db = SessionLocal()
+    blocks = (
+        db.query(DocumentBlock)
+        .filter(DocumentBlock.document_id == journal_id)
+        .order_by(DocumentBlock.position)
+        .all()
+    )
+    # --- Lazy migration of legacy content ---
+    if not blocks:
+        doc = db.query(Document).filter(Document.id == journal_id).first()
+        if doc and doc.content:
+            save_journal_content(journal_id, doc.content)
+            blocks = (
+                db.query(DocumentBlock)
+                .filter(DocumentBlock.document_id == journal_id)
+                .order_by(DocumentBlock.position)
+                .all()
+            )
+    result = []
+    for block in blocks:
+        data = block.data if isinstance(block.data, dict) else {"html": str(block.data)}
+        html = data.get("html", "")
+        table = None
+        if block.block_type == "table":
+            table = data.get("table")
+            html = ""  # таблица строится на фронте из JSON
+        elif block.block_type == "image":
+            image_url = data.get("image_url")
+            if image_url:
+                html = f"<img src=\"{image_url}\" style=\"max-width:100%; border-radius:16px;\"/>"
+        result.append({
+            "id": block.id,
+            "block_type": block.block_type,
+            "html": html,
+            "table": table,
+            "position": block.position,
+        })
+    db.close()
+    return result
+
+
+def get_journal_blocks_after(journal_id: int, after_position: int):
+    """Возвращает блоки с позицией > after_position."""
+    db = SessionLocal()
+    blocks = (
+        db.query(DocumentBlock)
+        .filter(
+            DocumentBlock.document_id == journal_id,
+            DocumentBlock.position > after_position,
+        )
+        .order_by(DocumentBlock.position)
+        .limit(100)
+        .all()
+    )
+    result = []
+    for block in blocks:
+        data = block.data if isinstance(block.data, dict) else {"html": str(block.data)}
+        html = data.get("html", "")
+        table = None
+        if block.block_type == "table":
+            table = data.get("table")
+            html = ""
+        elif block.block_type == "image":
+            image_url = data.get("image_url")
+            if image_url:
+                html = f"<img src=\"{image_url}\" style=\"max-width:100%; border-radius:16px;\"/>"
+        result.append({
+            "id": block.id,
+            "block_type": block.block_type,
+            "html": html,
+            "table": table,
+            "position": block.position,
+        })
+    db.close()
+    return result
+
+
+def create_journal_block(journal_id: int, after_block_id: str | None, html: str, block_type: str = "paragraph", table: dict | None = None):
+    """Создаёт новый блок после указанного блока и возвращает его словарь."""
+
+    db = SessionLocal()
+
+    # Определяем позицию
+    if after_block_id:
+        after_block = db.query(DocumentBlock).filter(DocumentBlock.id == after_block_id).first()
+        position = (after_block.position + 1) if after_block else 0
+    else:
+        # В конец
+        last = (
+            db.query(DocumentBlock)
+            .filter(DocumentBlock.document_id == journal_id)
+            .order_by(DocumentBlock.position.desc())
+            .first()
+        )
+        position = (last.position + 1) if last else 0
+
+    # Сдвигаем все блоки после позиции
+    db.query(DocumentBlock).filter(
+        DocumentBlock.document_id == journal_id,
+        DocumentBlock.position >= position,
+    ).update({DocumentBlock.position: DocumentBlock.position + 1})
+
+    # Храним для таблиц только JSON без html
+    if block_type == "table":
+        payload = {"table": table or {}}
+    else:
+        payload = {"html": html}
+    new_block = DocumentBlock(
+        id=str(uuid.uuid4()),
+        document_id=journal_id,
+        block_type=block_type,
+        data=payload,
+        position=position,
+    )
+    db.add(new_block)
+    db.commit()
+
+    result = {
+        "id": new_block.id,
+        "block_type": new_block.block_type,
+        "html": "" if block_type == "table" else html,
+        "table": table if block_type == "table" else None,
+        "position": position,
+    }
+    db.close()
+    return result
+
+
+def delete_journal_block(block_id: str):
+    db = SessionLocal()
+    block = db.query(DocumentBlock).filter(DocumentBlock.id == block_id).first()
+    if block:
+        doc_id = block.document_id
+        pos = block.position
+        db.delete(block)
+        # Сдвинем позиции последующих
+        db.query(DocumentBlock).filter(
+            DocumentBlock.document_id == doc_id,
+            DocumentBlock.position > pos,
+        ).update({DocumentBlock.position: DocumentBlock.position - 1})
+        db.commit()
+    db.close()
+
+
+def update_journal_block(block_id: str, html: str | None, table: dict | None = None, image_url: str | None = None):
+    """Обновляет содержимое блока и возвращает словарь блока для фронтенда.
+    Для таблиц сохраняем только JSON; для изображений сохраняем только URL; остальное — html."""
+    db = SessionLocal()
+    block = db.query(DocumentBlock).filter(DocumentBlock.id == block_id).first()
+    updated = None
+    if block:
+        data: dict = {}
+        if block.block_type == "table":
+            # Храним только таблицу
+            if table is not None:
+                data["table"] = table
+        elif block.block_type == "image":
+            # Храним только URL изображения
+            if image_url:
+                data["image_url"] = image_url
+            # html генерируем при отдаче
+            data.setdefault("image_url", (block.data or {}).get("image_url") if isinstance(block.data, dict) else None)
+        else:
+            # Обычный параграф и пр.: храним html
+            data["html"] = html or ""
+        block.data = data
+        db.commit()
+        # Сформируем словарь как в get_journal_blocks
+        # Вытаскиваем актуальные данные
+        if block.block_type == "table":
+            updated = {
+                "id": block.id,
+                "block_type": block.block_type,
+                "html": "<div class='mini-excel-container'></div>",
+                "table": block.data.get("table"),
+                "position": block.position,
+            }
+        elif block.block_type == "image":
+            url = block.data.get("image_url") if isinstance(block.data, dict) else None
+            img_html = f"<img src=\"{url}\" style=\"max-width:100%; border-radius:16px;\"/>" if url else ""
+            updated = {
+                "id": block.id,
+                "block_type": block.block_type,
+                "html": img_html,
+                "table": None,
+                "position": block.position,
+            }
+        else:
+            updated = {
+                "id": block.id,
+                "block_type": block.block_type,
+                "html": block.data.get("html") if isinstance(block.data, dict) else str(block.data),
+                "table": None,
+                "position": block.position,
+            }
+    db.close()
+    return updated
+
+
+def reorder_journal_blocks(document_id: int, ordered_ids: list[str]):
+    """Сохраняет новый порядок блоков по их id. Позиции назначаются по индексу в списке."""
+    if not ordered_ids:
+        return
+    db = SessionLocal()
+    try:
+        # Присвоим новые позиции согласно порядку
+        for idx, bid in enumerate(ordered_ids):
+            db.query(DocumentBlock).filter(
+                DocumentBlock.document_id == document_id,
+                DocumentBlock.id == bid,
+            ).update({DocumentBlock.position: idx})
+        db.commit()
+    finally:
+        db.close()
+
 
 def search_journals(query: str):
     db = SessionLocal()

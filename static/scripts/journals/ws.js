@@ -22,7 +22,7 @@ class WebSocketManager {
         this.editorManager.editor.addEventListener("keydown", () => this.isTyping = true);
         this.editorManager.editor.addEventListener("keyup", () => setTimeout(() => this.isTyping = false, 300));
         this.editorManager.editor.addEventListener("input", () => this.onInput());
-
+        
         // --- Добавлено: обработка изменения названия файла ---
         const titleElem = document.getElementById("filename");
         if (titleElem) {

@@ -1,5 +1,5 @@
 from fastapi import (
-    APIRouter, Request, Form, Depends, WebSocket, WebSocketDisconnect, HTTPException, status
+    APIRouter, Request, Form, Depends, WebSocket, WebSocketDisconnect, HTTPException, status, UploadFile, File
 )
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -9,11 +9,23 @@ from pydantic import BaseModel
 
 from repository.journal_repository import (
     get_journal_content, get_journal_tags, get_journal_title, save_journal_content,
-    add_tag_to_journal, remove_tag_from_journal, save_journal_title, search_journals
+    add_tag_to_journal, remove_tag_from_journal, save_journal_title, search_journals,
+    get_journal_blocks, update_journal_block, get_journal_blocks_after, create_journal_block, delete_journal_block,
+    reorder_journal_blocks,
 )
 from models import SessionLocal, Document, Folder
 from auth import get_current_user, get_current_user_for_websocket
 from connection_manager import manager
+import os
+import uuid
+import logging
+
+try:
+    import boto3
+    from botocore.client import Config as BotoConfig
+except Exception:  # fallback if not installed in some environments
+    boto3 = None
+    BotoConfig = None
 
 router = APIRouter()
 
@@ -188,6 +200,80 @@ async def move_folder(folder_id: int, payload: MoveFolderPayload, current_user: 
     db.close()
     return JSONResponse({"status": "ok", "folder_id": folder_id, "parent_id": payload.parent_id})
 
+
+# --- Upload image to S3 for journal blocks ---
+@router.post("/api/journals/{journal_id}/upload_image")
+async def upload_journal_image(
+    journal_id: int,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    logger = logging.getLogger("upload_image")
+    if boto3 is None:
+        logger.error("boto3 не установлен")
+        raise HTTPException(status_code=500, detail="S3 не настроен на сервере (boto3 не установлен)")
+
+    bucket = os.getenv("S3_BUCKET")
+    region = os.getenv("S3_REGION", "us-east-1")
+    access_key = os.getenv("S3_ACCESS_KEY_ID")
+    secret_key = os.getenv("S3_SECRET_ACCESS_KEY")
+    endpoint_url = os.getenv("S3_ENDPOINT_URL")  # можно оставить пустым для AWS
+
+    logger.info(
+        "Upload request: journal_id=%s, filename=%s, content_type=%s, env={bucket:%s, region:%s, endpoint:%s, access:%s, secret:%s}",
+        journal_id,
+        getattr(file, "filename", None),
+        getattr(file, "content_type", None),
+        bool(bucket),
+        region,
+        bool(endpoint_url),
+        bool(access_key),
+        bool(secret_key),
+    )
+
+    if not bucket or not access_key or not secret_key:
+        logger.error("Отсутствуют переменные окружения S3")
+        raise HTTPException(status_code=500, detail="Переменные окружения S3 не заданы: S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY")
+
+    try:
+        session = boto3.session.Session()
+        s3 = session.client(
+            "s3",
+            region_name=region,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            endpoint_url=endpoint_url,
+            config=BotoConfig(signature_version="s3v4") if BotoConfig else None,
+        )
+    except Exception:
+        logger.exception("Ошибка инициализации клиента S3")
+        raise HTTPException(status_code=500, detail="Ошибка инициализации S3 клиента")
+
+    # Генерируем ключ: journals/{journal_id}/images/{uuid}.{ext}
+    filename = file.filename or "image"
+    _, ext = os.path.splitext(filename)
+    ext = (ext or ".png").lower()
+    key = f"journals/{journal_id}/images/{uuid.uuid4().hex}{ext}"
+
+    # Загрузка
+    try:
+        content_type = file.content_type or "application/octet-stream"
+        logger.info("Начало загрузки в S3: bucket=%s, key=%s, content_type=%s", bucket, key, content_type)
+        s3.upload_fileobj(file.file, bucket, key, ExtraArgs={"ContentType": content_type, "ACL": "public-read"})
+        logger.info("Успешная загрузка в S3: key=%s", key)
+    except Exception:
+        logger.exception("Ошибка загрузки в S3")
+        raise HTTPException(status_code=500, detail="Ошибка загрузки в S3")
+
+    # Формируем публичный URL (для AWS S3 по умолчанию)
+    if endpoint_url:
+        # Совместимость с S3-совместимыми хранилищами (например, MinIO, Yandex)
+        public_url = f"{endpoint_url.rstrip('/')}/{bucket}/{key}"
+    else:
+        public_url = f"https://{bucket}.s3.{region}.amazonaws.com/{key}"
+    logger.info("Готов публичный URL: %s", public_url)
+    return JSONResponse({"status": "ok", "url": public_url, "key": key})
+
 @router.get("/search")
 async def search(query: str, current_user: dict = Depends(get_current_user)):
     results = search_journals(query)
@@ -217,7 +303,7 @@ async def ws_endpoint(websocket: WebSocket, journal_id: int, current_user: dict 
         "user_id": uid,
         "name": name,
         "color": color,
-        "content": get_journal_content(journal_id),
+        "blocks": get_journal_blocks(journal_id),
         "tags": get_journal_tags(journal_id),
         "filename": get_journal_title(journal_id)  # Добавляем название файла при инициализации
     })
@@ -225,12 +311,61 @@ async def ws_endpoint(websocket: WebSocket, journal_id: int, current_user: dict 
     try:
         while True:
             data = await websocket.receive_json()
-            if data["type"] == "content":
-                save_journal_content(journal_id, data["content"])
+            if data["type"] == "block_update":
+                block_id = data.get("block_id")
+                html = data.get("html")
+                table_json = data.get("table")
+                image_url = data.get("image_url")
+                if block_id is not None:
+                    updated = update_journal_block(block_id, html, table_json, image_url)
+                    if updated:
+                        await manager.broadcast(journal_id, {
+                            "type": "block_update",
+                            "block_id": block_id,
+                            "html": updated.get("html", html or ""),
+                            "table": updated.get("table"),
+                            "user_id": uid,
+                        })
+                # print(f"block_id: {block_id}, html: {html}")
+            elif data["type"] == "block_create":
+                after_id = data.get("after_block_id")
+                html = data.get("html", "")
+                block_type = data.get("block_type", "paragraph")
+                table_json = data.get("table")
+                new_block = create_journal_block(journal_id, after_id, html, block_type, table_json)
                 await manager.broadcast(journal_id, {
-                    "type": "content",
-                    "content": data["content"],
-                    "user_id": uid
+                    "type": "block_create",
+                    "temp_id": data.get("temp_id"),
+                    "block": new_block,
+                    "user_id": uid,
+                })
+            elif data["type"] == "block_delete":
+                block_id = data.get("block_id")
+                delete_journal_block(block_id)
+                await manager.broadcast(journal_id, {
+                    "type": "block_delete",
+                    "block_id": block_id,
+                    "user_id": uid,
+                })
+            elif data["type"] == "load_blocks":  
+                after_pos = data.get("after", -1)
+                extra_blocks = get_journal_blocks_after(journal_id, after_pos)
+                await websocket.send_json({
+                    "type": "blocks",
+                    "blocks": extra_blocks,
+                })
+            elif data["type"] == "block_reorder":
+                order = data.get("order", [])
+                # Сохраняем порядок
+                try:
+                    reorder_journal_blocks(journal_id, order)
+                except Exception:
+                    pass
+                # Рассылаем подтверждение нового порядка
+                await manager.broadcast(journal_id, {
+                    "type": "block_reorder",
+                    "order": order,
+                    "user_id": uid,
                 })
             elif data["type"] == "cursor":
                 await manager.broadcast(journal_id, {

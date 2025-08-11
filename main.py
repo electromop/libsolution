@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 
 # Импорт роутеров
 from routers.types_router import router as types_router
@@ -13,6 +13,9 @@ from routers.journal_router import router as journal_router
 from routers.quantity_router import router as quantity_router
 from routers.tag_router import router as tag_router
 from routers.task_router import router as task_router
+from dotenv import load_dotenv
+
+load_dotenv()  # автоматически загрузит переменные из .env в os.environ
 
 app = FastAPI()
 
@@ -47,7 +50,8 @@ app.include_router(types_router)
 async def custom_http_exception_handler(request: Request, exc: HTTPException):
     if exc.status_code == 401:
         return RedirectResponse(url="/login")
-    # Можно добавить обработку других ошибок или вернуть стандартный ответ
+    # Для остальных статусов вернём JSON, чтобы корректно завершить ответ
+    return JSONResponse({"detail": exc.detail or "Server error"}, status_code=exc.status_code)
 
 # Для инициализации приложения также стоит добавить:
 # - Подключение к базе данных (если требуется инициализация)

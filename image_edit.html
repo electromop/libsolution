@@ -1,0 +1,290 @@
+<html lang="ru"><head>
+    <meta charset="UTF-8">
+    <title>Редактор изображений</title>
+    <script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js"></script>
+    <style>
+      body { font-family: 'Arial', sans-serif; background-color: #f4f4f9; margin: 0; }
+      .modal {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+      }
+      .modal-content {
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        width: 80%;
+        max-width: 100vw;
+        max-height: 100vh;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      #canvas-container { 
+        border: 2px solid #ddd; 
+        margin-top: 10px; 
+        width: 100%;
+        height: 100%;
+        max-width: 100vw;
+        max-height: 80vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: #fff;
+        overflow: auto;
+      }
+      .button-container {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 20px;
+        width: 100%;
+        max-width: 800px;
+      }
+      button {
+        padding: 10px 20px;
+        font-size: 16px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      button:hover {
+        background-color: #ddd;
+      }
+      input[type="file"] {
+        margin-bottom: 20px;
+      }
+      .toggle-button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 150px;
+        background-color: #ddd;
+        border-radius: 20px;
+        cursor: pointer;
+        position: relative;
+      }
+      .toggle-button div {
+        width: 50%;
+        padding: 10px;
+        text-align: center;
+        border-radius: 20px;
+        transition: background-color 0.3s;
+      }
+      .toggle-button .drawing {
+        background-color: #fff;
+      }
+      .toggle-button .moving {
+        background-color: transparent;
+      }
+      #canvas {
+        display: block;
+        max-width: 100vw;
+        max-height: 80vh;
+        width: 100%;
+        height: 100%;
+        background: #fff;
+      }
+    </style>
+  <style class="automa-element-selector">@font-face { font-family: "Inter var"; font-weight: 100 900; font-display: swap; font-style: normal; font-named-instance: "Regular"; src: url("chrome-extension://infppggnoaenmfagbfknfkancpbljcca/Inter-roman-latin.var.woff2") format("woff2") }
+  .automa-element-selector { direction: ltr } 
+   [automa-isDragging] { user-select: none } 
+   [automa-el-list] {outline: 2px dashed #6366f1;}</style></head>
+  <body>
+  
+  <div class="modal">
+    <div class="modal-content">
+      <h2>Редактор изображений</h2>
+  
+      <input type="file" id="imageUpload" accept="image/*">
+      <div id="canvas-container">
+        <div class="canvas-container" style="width: 300px; height: 150px; position: relative; user-select: none;"><canvas id="canvas" class="lower-canvas" width="539.9999856948853" height="269.9999928474426" style="position: absolute; width: 300px; height: 150px; left: 0px; top: 0px; touch-action: none; user-select: none;"></canvas><canvas class="upper-canvas " width="539.9999856948853" height="269.9999928474426" style="position: absolute; width: 300px; height: 150px; left: 0px; top: 0px; touch-action: none; user-select: none; cursor: default;"></canvas></div>
+      </div>
+  
+      <div class="button-container">
+        <div class="toggle-button" onclick="toggleMode()">
+          <div class="drawing" style="background-color: transparent;">✏️ Рисование</div>
+          <div class="moving" style="background-color: rgb(255, 255, 255);">🖱️ Перемещение</div>
+        </div>
+        <button onclick="addText()">🔤 Добавить текст</button>
+        <button onclick="saveImage()">💾 Сохранить</button>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Получаем максимально возможные размеры для канваса (вьюпорт минус отступы)
+    function getMaxCanvasSize() {
+      // 80vh для высоты, чтобы кнопки и заголовок влезли
+      const maxWidth = window.innerWidth;
+      const maxHeight = window.innerHeight * 0.8;
+      return { width: maxWidth, height: maxHeight };
+    }
+  
+    let canvas = new fabric.Canvas('canvas');
+    canvas.isDrawingMode = true;
+  
+    function toggleMode() {
+      canvas.isDrawingMode = !canvas.isDrawingMode;
+      const drawingDiv = document.querySelector('.toggle-button .drawing');
+      const movingDiv = document.querySelector('.toggle-button .moving');
+      if (canvas.isDrawingMode) {
+        drawingDiv.style.backgroundColor = '#fff';
+        movingDiv.style.backgroundColor = 'transparent';
+      } else {
+        drawingDiv.style.backgroundColor = 'transparent';
+        movingDiv.style.backgroundColor = '#fff';
+      }
+    }
+  
+    function addText() {
+      const text = new fabric.IText('Надпись', {
+        left: 50,
+        top: 50,
+        fontSize: 20,
+        fill: '#000'
+      });
+      canvas.add(text);
+    }
+  
+    function saveImage() {
+      const dataURL = canvas.toDataURL({
+        format: 'png',
+        multiplier: 2
+      });
+  
+      const link = document.createElement('a');
+      link.href = dataURL;
+      link.download = 'annotated.png';
+      link.click();
+    }
+  
+    // Храним оригинальные размеры картинки для ресайза
+    let originalImageData = null;
+  
+    document.getElementById('imageUpload').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+  
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const imgObj = new Image();
+        imgObj.onload = function () {
+          // Сохраняем оригинальные размеры и src
+          originalImageData = {
+            width: imgObj.width,
+            height: imgObj.height,
+            src: event.target.result
+          };
+  
+          setCanvasAndBackgroundImage();
+        };
+        imgObj.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  
+    function setCanvasAndBackgroundImage() {
+      if (!originalImageData) return;
+      const { width: maxWidth, height: maxHeight } = getMaxCanvasSize();
+      const imgWidth = originalImageData.width;
+      const imgHeight = originalImageData.height;
+  
+      // Если картинка меньше экрана — используем её реальный размер
+      // Если больше — уменьшаем до максимального размера, сохраняя пропорции
+      let displayWidth = imgWidth;
+      let displayHeight = imgHeight;
+      let scale = 1;
+  
+      if (imgWidth > maxWidth || imgHeight > maxHeight) {
+        scale = Math.min(maxWidth / imgWidth, maxHeight / imgHeight, 1);
+        displayWidth = imgWidth * scale;
+        displayHeight = imgHeight * scale;
+      }
+  
+      // Устанавливаем размеры канваса
+      canvas.setWidth(displayWidth);
+      canvas.setHeight(displayHeight);
+  
+      // Устанавливаем размеры самого canvas DOM-элемента
+      const canvasEl = document.getElementById('canvas');
+      canvasEl.width = displayWidth;
+      canvasEl.height = displayHeight;
+      canvasEl.style.width = displayWidth + 'px';
+      canvasEl.style.height = displayHeight + 'px';
+  
+      // Очищаем все объекты и фон
+      canvas.clear();
+  
+      // Создаём fabric.Image с нужным масштабом
+      fabric.Image.fromURL(originalImageData.src, function(fabricImage) {
+        // Если картинка меньше экрана — scaleX/scaleY = 1, иначе уменьшаем
+        fabricImage.set({
+          left: 0,
+          top: 0,
+          scaleX: scale,
+          scaleY: scale,
+          selectable: false,
+          evented: false
+        });
+        canvas.setBackgroundImage(fabricImage, canvas.renderAll.bind(canvas));
+      }, { crossOrigin: 'anonymous' });
+    }
+  
+    // При изменении размера окна — если есть картинка, пересчитать размеры канваса и фоновой картинки
+    window.addEventListener('resize', function() {
+      if (originalImageData) {
+        setCanvasAndBackgroundImage();
+      }
+    });
+  </script>
+  
+  <!-- Code injected by live-server -->
+  <script>
+      // <![CDATA[  <-- For SVG support
+      if ('WebSocket' in window) {
+          (function () {
+              function refreshCSS() {
+                  var sheets = [].slice.call(document.getElementsByTagName("link"));
+                  var head = document.getElementsByTagName("head")[0];
+                  for (var i = 0; i < sheets.length; ++i) {
+                      var elem = sheets[i];
+                      var parent = elem.parentElement || head;
+                      parent.removeChild(elem);
+                      var rel = elem.rel;
+                      if (elem.href && typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet") {
+                          var url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
+                          elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
+                      }
+                      parent.appendChild(elem);
+                  }
+              }
+              var protocol = window.location.protocol === 'http:' ? 'ws://' : 'wss://';
+              var address = protocol + window.location.host + window.location.pathname + '/ws';
+              var socket = new WebSocket(address);
+              socket.onmessage = function (msg) {
+                  if (msg.data == 'reload') window.location.reload();
+                  else if (msg.data == 'refreshcss') refreshCSS();
+              };
+              if (sessionStorage && !sessionStorage.getItem('IsThisFirstTime_Log_From_LiveServer')) {
+                  console.log('Live reload enabled.');
+                  sessionStorage.setItem('IsThisFirstTime_Log_From_LiveServer', true);
+              }
+          })();
+      }
+      else {
+          console.error('Upgrade your browser. This Browser is NOT supported WebSocket for Live-Reloading.');
+      }
+      // ]]>
+  </script>
+  
+  
+  <div id="automa-palette"></div></body></html>

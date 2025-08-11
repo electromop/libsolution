@@ -20,7 +20,7 @@
             <button class="btn btn-outline-secondary" onclick="formatText('justifyLeft')"><i class="bi bi-text-left"></i></button>
             <button class="btn btn-outline-secondary" onclick="formatText('justifyCenter')"><i class="bi bi-text-center"></i></button>
             <button class="btn btn-outline-secondary" onclick="formatText('justifyRight')"><i class="bi bi-text-right"></i></button>
-            <select class="form-select form-select-sm ms-2" style="width:auto; display:inline-block;" onchange="changeFontSize(this.value)">
+            <select id="font-size-select" class="form-select form-select-sm ms-2" style="width:auto; display:inline-block;" onchange="changeFontSize(this.value)">
                 <option value="">Размер</option>
                 <option value="10">10</option>
                 <option value="13">13</option>
@@ -31,6 +31,12 @@
                 <option value="48">48</option>
             </select>
             <button class="btn btn-outline-secondary" onclick="showTableDialog(event)"><i class="bi bi-table"></i></button>
+            <div class="btn-group">
+                <button class="btn btn-outline-secondary" onclick="window.mergeSelectedCells && window.mergeSelectedCells()" title="Объединить"><i class="bi bi-bounding-box"></i></button>
+                <button class="btn btn-outline-secondary" onclick="window.unmergeSelectedCells && window.unmergeSelectedCells()" title="Разъединить"><i class="bi bi-bounding-box-circles"></i></button>
+            </div>
+            <button class="btn btn-outline-secondary" onclick="window.addTimelineMarker && window.addTimelineMarker()" title="Временная метка"><i class="bi bi-clock-history"></i></button>
+            <button class="btn btn-outline-secondary" onclick="(window.createImageBlock && window.createImageBlock())"><i class="bi bi-file-earmark-image"></i></button>
         </div>
         <div class="btn-group position-relative" style="z-index: 1200;">
             <button class="btn btn-outline-secondary" id="date-picker-btn" type="button">
@@ -99,6 +105,72 @@
 
             // Изначально кнопка "Вставить" неактивна
             dateInsertBtn.disabled = true;
+        </script>
+        <script>
+            // Синхронизация выпадающего списка размера шрифта с текущим выделением
+            (function() {
+                const sizeSelect = document.getElementById('font-size-select');
+                const sizeOptions = [10, 13, 16, 18, 24, 32, 48];
+
+                window.changeFontSize = function(val) {
+                    const px = parseInt(val, 10);
+                    if (!px) return;
+                    // Используем execCommand для оборачивания, затем заменяем <font> на <span style>
+                    document.execCommand('fontSize', false, '7');
+                    try {
+                        const editor = document.getElementById('editor');
+                        editor && editor.querySelectorAll('font[size="7"]').forEach(font => {
+                            const span = document.createElement('span');
+                            span.style.fontSize = px + 'px';
+                            span.innerHTML = font.innerHTML;
+                            font.replaceWith(span);
+                        });
+                    } catch (_) {}
+                    if (sizeSelect) sizeSelect.value = String(px);
+                }
+
+                function nearestOption(px) {
+                    let best = sizeOptions[0];
+                    let diff = Infinity;
+                    for (const s of sizeOptions) {
+                        const d = Math.abs(px - s);
+                        if (d < diff) { diff = d; best = s; }
+                    }
+                    return best;
+                }
+
+                function getSelectionFontSizePx() {
+                    const sel = window.getSelection();
+                    if (!sel || sel.rangeCount === 0) return null;
+                    let node = sel.anchorNode;
+                    if (!node) return null;
+                    if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+                    if (!(node instanceof Element)) return null;
+                    // Убедимся, что курсор внутри редактора
+                    let el = node;
+                    let insideEditor = false;
+                    while (el && el !== document) {
+                        if (el.id === 'editor') { insideEditor = true; break; }
+                        el = el.parentElement;
+                    }
+                    if (!insideEditor) return null;
+                    const computed = window.getComputedStyle(node);
+                    const fs = computed && computed.fontSize; // например, "16px"
+                    if (!fs) return null;
+                    const m = fs.match(/(\d+(?:\.\d+)?)/);
+                    return m ? parseFloat(m[1]) : null;
+                }
+
+                function updateFontSizeSelect() {
+                    if (!sizeSelect) return;
+                    const px = getSelectionFontSizePx();
+                    if (!px) { sizeSelect.value = ''; return; }
+                    sizeSelect.value = String(nearestOption(px));
+                }
+
+                document.addEventListener('selectionchange', updateFontSizeSelect);
+                document.addEventListener('DOMContentLoaded', updateFontSizeSelect);
+            })();
         </script>
         <div class="btn-group ms-2" id="tag-add-group">
             <button class="btn btn-outline-secondary rounded-pill" id="tag-add-toggle-btn" type="button" style="border-radius: 999px !important;">
@@ -246,23 +318,9 @@
         }
 
         function insertTable(rows, cols) {
-            // Найти редактор (notion-block/editor)
-            const editor = document.getElementById('editor');
-            if (!editor) {
-                alert('Не найден элемент с id "editor"');
-                return;
+            if (window.createTableBlock) {
+                window.createTableBlock(rows, cols);
             }
-
-            const container = document.createElement('div');
-            container.classList.add('mini-excel-container');
-            editor.appendChild(container);
-
-            if (!container) {
-                console.error('container is undefined');
-                return;
-            }
-            new MiniExcel(container, rows, cols); // можно задать размер таблицы
-
         }
 
 
@@ -302,6 +360,14 @@
                 }
             }
             document.body.appendChild(tableSizePicker);
+            // Закрытие при клике вне
+            const onDocClick = (e) => {
+                if (!tableSizePicker.contains(e.target)) {
+                    document.body.removeChild(tableSizePicker);
+                    document.removeEventListener('click', onDocClick);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', onDocClick), 0);
         }
         function highlightCells(rows, cols, container) {
             const cells = container.querySelectorAll('div');
@@ -335,25 +401,440 @@
                     });
                 }
                 // Добавляем небольшую задержку перед инициализацией MiniExcel
-                setTimeout(function() {
-                    document.querySelectorAll(".mini-excel-container").forEach(container => {
-                        console.log('загружаем таблицу');
-                        new MiniExcel(container);
-                    });
-                }, 200); // 200 мс задержка
-                document.querySelectorAll(".mini-excel-container").forEach(container => {
-                    console.log('загружаем таблицу');
-                    new MiniExcel(container);
-                });
+                // Инициализация существующих таблиц произойдёт в блок-редакторе при рендере
             });
-    
-        //     window.addEventListener("DOMContentLoaded", () => {
+            //     window.addEventListener("DOMContentLoaded", () => {
             
         // });
         // document.querySelectorAll(".mini-excel-container").forEach(container => {
         //         console.log('container');
         //         new MiniExcel(container);
         //     });
+        </script>
+    <style>
+        .photo-insert-block {
+            width: 100%;
+            border: 2px dashed #007bff;
+            border-radius: 16px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 200px;
+            background: #f8f9fa;
+            margin: 16px 0;
+            cursor: pointer;
+            overflow: hidden;
+            transition: background 0.2s, border 0.2s;
+        }
+        .photo-insert-block.has-photo {
+            background: transparent;
+            border: none;
+        }
+        .photo-insert-block img {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 16px;
+            display: block;
+        }
+        .photo-insert-edit-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 14px;
+            cursor: pointer;
+            opacity: 0.9;
+            z-index: 2;
+        }
+        .photo-insert-block input[type="file"] {
+            display: none;
+        }
+        .photo-insert-placeholder {
+            color: #888;
+            font-size: 18px;
+            text-align: center;
+        }
+        .image-editor-modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0; top: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.7);
+            justify-content: center;
+            align-items: center;
+        }
+        .image-editor-modal.active {
+            display: flex;
+        }
+        .image-editor-content {
+            background: #fff;
+            border-radius: 12px;
+            padding: 24px 20px 16px 20px;
+            min-width: 320px;
+            max-width: 95vw;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+        .image-editor-toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .image-editor-toolbar button {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid #007bff;
+            background: #f8f9fa;
+            color: #007bff;
+            cursor: pointer;
+            font-size: 15px;
+        }
+        .image-editor-toolbar button.active {
+            background: #007bff;
+            color: #fff;
+        }
+        .image-editor-canvas-container {
+            background: #f4f4f9;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 8px;
+            max-width: 80vw;
+            max-height: 60vh;
+            overflow: auto;
+        }
+        .image-editor-modal-close {
+            position: absolute;
+            top: 10px; right: 16px;
+            background: transparent;
+            border: none;
+            font-size: 24px;
+            color: #888;
+            cursor: pointer;
+        }
+        .image-editor-modal-close:hover {
+            color: #007bff;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js"></script>
+    <div id="image-editor-modal" class="image-editor-modal">
+        <div class="image-editor-content">
+            <button class="image-editor-modal-close" onclick="window.PhotoEditorModal && window.PhotoEditorModal.close()">&times;</button>
+            <div class="image-editor-toolbar">
+                <button id="draw-free-btn" onclick="window.PhotoEditorModal && window.PhotoEditorModal.setMode('draw-free')" class="active">✏️ Рисование</button>
+                <button id="draw-line-btn" onclick="window.PhotoEditorModal && window.PhotoEditorModal.setMode('draw-line')">📏 Линия</button>
+                <button id="move-btn" onclick="window.PhotoEditorModal && window.PhotoEditorModal.setMode('move')">🖱️ Перемещение</button>
+                <button id="text-btn" onclick="window.PhotoEditorModal && window.PhotoEditorModal.setMode('text')">🔤 Текст</button>
+                <button id="save-btn" onclick="window.PhotoEditorModal && window.PhotoEditorModal.save()">💾 Сохранить</button>
+            </div>
+            <div class="image-editor-canvas-container">
+                <canvas id="image-editor-canvas" style="background:#fff; border-radius:8px; max-width:100%; max-height:55vh;"></canvas>
+            </div>
+        </div>
+    </div>
+    <script>
+    // Класс для блока вставки фото
+    class PhotoInsertBlock {
+        constructor(editor) {
+            this.editor = editor;
+            this.block = document.createElement('div');
+            this.block.className = 'photo-insert-block';
+
+            this.fileInput = document.createElement('input');
+            this.fileInput.type = 'file';
+            this.fileInput.accept = 'image/*';
+
+            this.editBtn = document.createElement('button');
+            this.editBtn.className = 'photo-insert-edit-btn';
+            this.editBtn.textContent = 'Изменить';
+            this.editBtn.setAttribute('contenteditable', 'false');
+            this.editBtn.style.display = 'none';
+
+            this.placeholder = document.createElement('div');
+            this.placeholder.className = 'photo-insert-placeholder';
+            this.placeholder.textContent = 'Нажмите, чтобы добавить фото';
+
+            this.img = document.createElement('img');
+            this.img.style.display = 'none';
+
+            this.currentImageData = null;
+
+            this.fileInput.addEventListener('change', this.onFileChange.bind(this));
+            this.block.addEventListener('click', this.onBlockClick.bind(this));
+            this.editBtn.addEventListener('click', this.onEditClick.bind(this));
+
+            this.block.appendChild(this.img);
+            this.block.appendChild(this.placeholder);
+            this.block.appendChild(this.editBtn);
+            this.block.appendChild(this.fileInput);
+
+            this.editor.appendChild(this.block);
+
+            setTimeout(() => this.fileInput.click(), 100);
+        }
+
+        onFileChange() {
+            if (this.fileInput.files && this.fileInput.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    this.img.src = e.target.result;
+                    this.img.style.display = 'block';
+                    this.placeholder.style.display = 'none';
+                    this.editBtn.style.display = 'block';
+                    this.block.classList.add('has-photo');
+                    this.currentImageData = e.target.result;
+                };
+                reader.readAsDataURL(this.fileInput.files[0]);
+            }
+        }
+
+        onBlockClick(e) {
+            if (e.target === this.editBtn) return; // обработка отдельно
+            if (!this.img.src || this.img.style.display === 'none') {
+                this.fileInput.click();
+            } else {
+                this.openEditor();
+            }
+        }
+
+        onEditClick(e) {
+            e.stopPropagation();
+            this.openEditor();
+        }
+
+        openEditor() {
+            if (!this.img.src) {
+                alert('Сначала выберите изображение!');
+                return;
+            }
+            window.PhotoEditorModal.open(this.img, (dataUrl) => {
+                this.img.src = dataUrl;
+                this.currentImageData = dataUrl;
+            });
+        }
+    }
+
+    // Класс для модального редактора
+    class PhotoEditorModalClass {
+        constructor() {
+            this.modal = document.getElementById('image-editor-modal');
+            this.canvasEl = document.getElementById('image-editor-canvas');
+            this.fabricCanvas = null;
+            this.mode = 'draw-free';
+            this.callback = null;
+            this.image = null;
+            this.backgroundImage = null;
+            this._setupToolbar();
+        }
+
+        open(imgElement, onSaveCallback) {
+            this.modal.classList.add('active');
+            this.callback = onSaveCallback;
+            this.image = imgElement;
+
+            if (this.fabricCanvas) {
+                this.fabricCanvas.dispose();
+            }
+
+            // Загружаем картинку
+            const tempImg = new window.Image();
+            tempImg.onload = () => {
+                let maxW = Math.min(800, window.innerWidth * 0.8);
+                let maxH = Math.min(500, window.innerHeight * 0.6);
+                let scale = Math.min(maxW / tempImg.width, maxH / tempImg.height, 1);
+                let w = tempImg.width * scale;
+                let h = tempImg.height * scale;
+                this.canvasEl.width = w;
+                this.canvasEl.height = h;
+                this.canvasEl.style.width = w + 'px';
+                this.canvasEl.style.height = h + 'px';
+
+                this.fabricCanvas = new fabric.Canvas('image-editor-canvas', {
+                    width: w,
+                    height: h,
+                    selection: true,
+                    backgroundColor: '#fff'
+                });
+
+                fabric.Image.fromURL(imgElement.src, (fabricImg) => {
+                    fabricImg.set({
+                        left: 0,
+                        top: 0,
+                        scaleX: w / tempImg.width,
+                        scaleY: h / tempImg.height,
+                        selectable: false,
+                        evented: false
+                    });
+                    this.backgroundImage = fabricImg;
+                    this.fabricCanvas.setBackgroundImage(fabricImg, this.fabricCanvas.renderAll.bind(this.fabricCanvas));
+                    this.setMode('draw-free');
+                    this._setupEvents();
+                }, { crossOrigin: 'anonymous' });
+            };
+            if (!imgElement.src) {
+                alert('Сначала выберите изображение!');
+                this.close();
+                return;
+            }
+            tempImg.src = imgElement.src;
+        }
+
+        close() {
+            this.modal.classList.remove('active');
+            if (this.fabricCanvas) {
+                this.fabricCanvas.dispose();
+                this.fabricCanvas = null;
+            }
+            this.callback = null;
+            this.image = null;
+        }
+
+        setMode(mode) {
+            this.mode = mode;
+            document.getElementById('draw-free-btn').classList.toggle('active', mode === 'draw-free');
+            document.getElementById('draw-line-btn').classList.toggle('active', mode === 'draw-line');
+            document.getElementById('move-btn').classList.toggle('active', mode === 'move');
+            document.getElementById('text-btn').classList.toggle('active', mode === 'text');
+            if (this.fabricCanvas) {
+                if (mode === 'draw-free') {
+                    this.fabricCanvas.isDrawingMode = true;
+                    this.fabricCanvas.selection = false;
+                    this.fabricCanvas.forEachObject(obj => obj.selectable = false);
+                } else if (mode === 'draw-line') {
+                    this.fabricCanvas.isDrawingMode = false;
+                    this.fabricCanvas.selection = false;
+                    this.fabricCanvas.forEachObject(obj => obj.selectable = false);
+                } else if (mode === 'move') {
+                    this.fabricCanvas.isDrawingMode = false;
+                    this.fabricCanvas.selection = true;
+                    this.fabricCanvas.forEachObject(obj => obj.selectable = true);
+                } else if (mode === 'text') {
+                    this.fabricCanvas.isDrawingMode = false;
+                    this.fabricCanvas.selection = false;
+                    this.fabricCanvas.forEachObject(obj => obj.selectable = false);
+                }
+            }
+        }
+
+        save() {
+            if (!this.fabricCanvas) return;
+            this.fabricCanvas.discardActiveObject();
+            this.fabricCanvas.renderAll();
+            const dataUrl = this.fabricCanvas.toDataURL({
+                format: 'png',
+                multiplier: 1
+            });
+            if (this.callback) {
+                this.callback(dataUrl);
+            }
+            this.close();
+        }
+
+        _setupToolbar() {
+            // Для совместимости с onclick в html
+            window.PhotoEditorModal = this;
+        }
+
+        _setupEvents() {
+            const canvas = this.fabricCanvas;
+            if (!canvas) return;
+            canvas.off();
+
+            // Для рисования линий
+            let line, isDown = false;
+            canvas.on('mouse:down', (o) => {
+                if (this.mode === 'draw-line') {
+                    isDown = true;
+                    const pointer = canvas.getPointer(o.e);
+                    const points = [ pointer.x, pointer.y, pointer.x, pointer.y ];
+                    line = new fabric.Line(points, {
+                        strokeWidth: 3,
+                        fill: '#007bff',
+                        stroke: '#007bff',
+                        originX: 'center',
+                        originY: 'center',
+                        selectable: false,
+                        evented: false
+                    });
+                    canvas.add(line);
+                } else if (this.mode === 'text') {
+                    const pointer = canvas.getPointer(o.e);
+                    const text = new fabric.IText('Текст', {
+                        left: pointer.x,
+                        top: pointer.y,
+                        fontSize: 20,
+                        fill: '#222'
+                    });
+                    canvas.add(text);
+                    canvas.setActiveObject(text);
+                    text.enterEditing();
+                    this.setMode('move');
+                }
+            });
+            canvas.on('mouse:move', (o) => {
+                if (this.mode === 'draw-line' && isDown && line) {
+                    const pointer = canvas.getPointer(o.e);
+                    line.set({ x2: pointer.x, y2: pointer.y });
+                    canvas.renderAll();
+                }
+            });
+            canvas.on('mouse:up', (o) => {
+                if (this.mode === 'draw-line' && isDown) {
+                    isDown = false;
+                    if (line) {
+                        line.setCoords();
+                        line.selectable = true;
+                        line.evented = true;
+                        this.setMode('move');
+                    }
+                    line = null;
+                }
+            });
+
+            // Для выделения и перемещения объектов
+            canvas.on('object:selected', function(e) {
+                e.target.set({
+                    borderColor: '#007bff',
+                    cornerColor: '#007bff',
+                    cornerSize: 10,
+                    transparentCorners: false,
+                    borderDashArray: [4, 4]
+                });
+                canvas.renderAll();
+            });
+            canvas.on('selection:cleared', function(e) {
+                canvas.renderAll();
+            });
+
+            // Для рисования от руки
+            if (this.mode === 'draw-free') {
+                canvas.isDrawingMode = true;
+                canvas.freeDrawingBrush.color = '#007bff';
+                canvas.freeDrawingBrush.width = 3;
+            } else {
+                canvas.isDrawingMode = false;
+            }
+        }
+    }
+
+    // Глобальный экземпляр редактора
+    window.PhotoEditorModal = new PhotoEditorModalClass();
+
+    // Глобальная функция для кнопки
+    function inserPhoto() {
+        const editor = document.getElementById('editor');
+        if (!editor) return;
+        new PhotoInsertBlock(editor);
+    }
     </script>
     {% include "utils/tag_list.html" %}
 </nav>

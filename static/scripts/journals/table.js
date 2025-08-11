@@ -1,18 +1,21 @@
 class MiniExcel {
-    constructor(containerId, rows = 10, cols = 5) {
-      this.container = document.getElementById(containerId);
+    constructor(containerOrId, rows = 10, cols = 5) {
+      this.container = typeof containerOrId === 'string' ? document.getElementById(containerOrId) : containerOrId;
       this.rows = rows;
       this.cols = cols;
       this.data = {};
+      this.colWidths = {};
       this.colNames = Array.from({ length: cols }, (_, i) => String.fromCharCode(65 + i));
       this.currentInput = null;
+      this.onChange = null;
       this.init();
     }
 
     init() {
+      this.container.innerHTML = '';
       const table = document.createElement('table');
       const headerRow = document.createElement('tr');
-      headerRow.innerHTML = `<th></th>` + this.colNames.map(c => `<th><b>${c}</b></th>`).join('');
+      headerRow.innerHTML = `<th></th>` + this.colNames.map(c => `<th data-col="${c}"><b>${c}</b></th>`).join('');
       table.appendChild(headerRow);
 
       for (let r = 1; r <= this.rows; r++) {
@@ -25,6 +28,7 @@ class MiniExcel {
       }
 
       this.container.appendChild(table);
+      this.applyColumnWidths();
       this.attachListeners();
       this.recalculate();
     }
@@ -52,6 +56,9 @@ class MiniExcel {
           this.recalculate();
           this.clearHighlights();
           this.togglePointerMode(false);
+          if (typeof this.onChange === 'function') {
+            this.onChange();
+          }
         });
 
         input.addEventListener("keydown", (e) => {
@@ -67,6 +74,26 @@ class MiniExcel {
             }
           }
         });
+      });
+    }
+
+    applyColumnWidths() {
+      const table = this.container.querySelector('table');
+      if (!table) return;
+      const headerCells = table.querySelectorAll('th[data-col]');
+      headerCells.forEach(th => {
+        const colName = th.getAttribute('data-col');
+        const width = this.colWidths[colName];
+        if (width) {
+          th.style.width = `${width}px`;
+          const colIndex = this.colNames.indexOf(colName);
+          if (colIndex >= 0) {
+            const nth = colIndex + 2; // +1 за индекс ряда и ещё +1 т.к. nth-child начинается с 1
+            this.container.querySelectorAll(`tr td:nth-child(${nth}) input`).forEach(inp => {
+              inp.style.width = `${Math.max(20, width - 16)}px`;
+            });
+          }
+        }
       });
     }
 
@@ -97,7 +124,8 @@ class MiniExcel {
             const val = this.getValue(ref);
             return isNaN(val) ? "0" : val;
           });
-          return eval(expr);
+          const safeEval = Function('"use strict"; return (' + expr + ');');
+          return safeEval();
         } catch {
           return "#ERR";
         }
@@ -204,6 +232,31 @@ class MiniExcel {
         }
       });
     }
-  }
 
-new MiniExcel("excel-root");
+    export() {
+      return {
+        rows: this.rows,
+        cols: this.cols,
+        data: { ...this.data },
+        colWidths: { ...this.colWidths },
+      };
+    }
+
+    import(tableObj) {
+      if (!tableObj) return;
+      const { rows, cols, data, colWidths } = tableObj;
+      if (Number.isInteger(rows) && Number.isInteger(cols)) {
+        this.rows = rows;
+        this.cols = cols;
+        this.colNames = Array.from({ length: cols }, (_, i) => String.fromCharCode(65 + i));
+        this.data = data || {};
+        this.colWidths = colWidths || {};
+        this.init();
+      } else {
+        this.data = data || {};
+        this.colWidths = colWidths || {};
+        this.applyColumnWidths();
+        this.recalculate();
+      }
+    }
+  }

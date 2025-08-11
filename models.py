@@ -8,7 +8,7 @@ from datetime import datetime, UTC
 import uuid
 
 # ВАЖНО: Добавляем параметр sslmode='disable' для устранения ошибки SSL connection has been closed unexpectedly
-SQLALCHEMY_DATABASE_URL = "postgresql://gen_user:1^GDoFswOw0=).@77.232.135.76:5432/Libsolution"
+SQLALCHEMY_DATABASE_URL = "postgresql://gen_user:1^GDoFswOw0=).@77.232.135.76:5432/Libsolution_beta"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
@@ -50,12 +50,31 @@ document_tag_table = Table(
 class Document(Base):
     __tablename__ = "document"
     id = Column(Integer, primary_key=True)
+    # Устаревшее текстовое содержимое (для обратной совместимости)
     content = Column(Text, default="")
     filename = Column(String, default="")
     tags = relationship("Tag", secondary=document_tag_table, back_populates="documents")
     # Связь с папкой
     folder_id = Column(Integer, ForeignKey("folder.id"), nullable=True)
     folder = relationship("Folder", back_populates="documents")
+    # Новые блоки документа
+    blocks = relationship(
+        "DocumentBlock",
+        order_by="DocumentBlock.position",
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+
+class DocumentBlock(Base):
+    __tablename__ = "document_block"
+    id = Column(String, primary_key=True)
+    document_id = Column(Integer, ForeignKey("document.id"), nullable=False)
+    block_type = Column(String, nullable=False, default="paragraph")  # Тип блока (paragraph, heading, image и т.д.)
+    data = Column(JSON, nullable=False)  # Содержимое блока (может быть текстом или структурой в JSON)
+    position = Column(Integer, nullable=False)  # Позиция блока в документе
+
+    document = relationship("Document", back_populates="blocks")
+
 
 class Tag(Base):
     __tablename__ = "tag"

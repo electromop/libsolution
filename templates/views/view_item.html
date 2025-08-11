@@ -139,6 +139,13 @@
 <!-- Модальное окно для редактирования (будет добавлено динамически) -->
 
 <script>
+
+// Получаем протокол и хост для формирования абсолютного HTTPS URL
+function getApiBaseUrl() {
+    // Используем window.location.origin, чтобы всегда использовать текущий протокол и хост
+    return window.location.origin;
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
   // Получаем id вещества из url (например, /item/123/ или ?item_id=123)
   function getItemIdFromUrl() {
@@ -485,7 +492,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       reason: reason
     };
     try {
-      const resp = await fetch('/quantity_change/', {
+      const resp = await fetch(`${getApiBaseUrl()}/quantity_change/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -665,7 +672,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (!text) return;
     addCommentForm.querySelector('button[type="submit"]').disabled = true;
     try {
-      const resp = await fetch(`/items/${itemId}/comments/`, {
+      // Формируем абсолютный URL для запроса, чтобы избежать Mixed Content
+      const apiUrl = `${getApiBaseUrl()}/items/${itemId}/comments/`;
+      const resp = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: text })

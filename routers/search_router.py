@@ -3,9 +3,8 @@ from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text
+from sqlalchemy import func, or_, text
 from auth import get_current_user
-# Импорт моделей и зависимостей из основного приложения
 from models import SubstanceItem, get_db
 
 router = APIRouter()
@@ -21,35 +20,41 @@ class ItemOut(BaseModel):
     class Config:
         from_attributes = True
 
-# В SQLite функция lower не всегда корректно работает с кириллицей, если не подключено расширение ICU.
-# Поэтому для поиска по кириллице делаем двойную проверку: обычный LIKE и lower+LIKE.
-# Это увеличивает шанс найти "Бензол" по запросу "бен" или "БЕН".
+# Поиск по имени (работает и для PostgreSQL, и для SQLite)
 @router.get("/search/name/", response_model=List[ItemOut])
 def search_items_by_name(query: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     lowered_query = query.lower()
     pattern = f"%{lowered_query}%"
-    # Делаем OR: либо совпадение с lower(name), либо с обычным name (на случай, если lower не работает с кириллицей)
+    # Для PostgreSQL ILIKE работает корректно для кириллицы и нечувствителен к регистру
     items = db.query(SubstanceItem).filter(
-        func.lower(SubstanceItem.name).like(pattern) | SubstanceItem.name.like(f"%{query}%")
+        or_(
+            SubstanceItem.name.ilike(pattern),
+            SubstanceItem.name.like(f"%{query}%")
+        )
     ).all()
     return items
 
+# Поиск по значениям в data (jsonb) для PostgreSQL
 @router.get("/search/data/", response_model=List[ItemOut])
 def search_items_by_data(query: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    # Поиск по всем строковым значениям в data (SQLite: json_each)
-    # Используем сырой SQL, чтобы получить id подходящих записей
+    """
+    Поиск по всем строковым значениям в data (jsonb).
+    Для PostgreSQL используем jsonb_each_text и ILIKE.
+    """
     lowered_query = query.lower()
     pattern = f"%{lowered_query}%"
+    # В PostgreSQL можно пройтись по всем значениям jsonb и искать совпадения
+    # Важно: используем text() для явного указания сырого SQL
+    # Также важно: если substance_item.data не jsonb, а json, то надо привести к jsonb
     sql = text("""
         SELECT id FROM substance_item
         WHERE EXISTS (
-            SELECT 1 FROM json_each(substance_item.data)
-            WHERE typeof(json_each.value) = 'text'
-              AND lower(json_each.value) LIKE :pattern
+            SELECT 1 FROM jsonb_each_text(substance_item.data::jsonb) AS t(key, value)
+            WHERE value ILIKE :pattern
         )
     """)
     result = db.execute(sql, {"pattern": pattern})
-    ids = [row[0] for row in result]  # row[0], а не row["id"], т.к. возвращается tuple
+    ids = [row[0] for row in result]
     if not ids:
         return []
     items = db.query(SubstanceItem).filter(SubstanceItem.id.in_(ids)).all()
