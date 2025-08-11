@@ -233,7 +233,9 @@ document.addEventListener('DOMContentLoaded', async function() {
   const tbody = document.getElementById('itemFieldsTable').querySelector('tbody');
   tbody.innerHTML = '';
   itemData.type.fields.forEach(field => {
-    const value = itemData.data ? itemData.data[field.name] : null;
+    const value = itemData.data
+      ? (itemData.data[field.id] !== undefined ? itemData.data[field.id] : itemData.data[field.name])
+      : null;
     let displayValue = '';
     if (field.field_type === 'bool') {
       displayValue = value ? '<span class="badge bg-success">Да</span>' : '<span class="badge bg-danger">Нет</span>';
@@ -257,9 +259,15 @@ document.addEventListener('DOMContentLoaded', async function() {
   });
 
   // Описание (если есть)
-  if (itemData.data && itemData.data['Описание']) {
-    document.getElementById('itemDescriptionText').textContent = itemData.data['Описание'];
-    document.getElementById('itemDescriptionCard').classList.remove('d-none');
+  if (itemData.data) {
+    const descField = (itemData.type.fields || []).find(f => f.name === 'Описание');
+    const descValue = descField
+      ? (itemData.data[descField.id] !== undefined ? itemData.data[descField.id] : itemData.data[descField.name])
+      : itemData.data['Описание'];
+    if (descValue) {
+      document.getElementById('itemDescriptionText').textContent = descValue;
+      document.getElementById('itemDescriptionCard').classList.remove('d-none');
+    }
   }
 
   // Метаданные
@@ -307,18 +315,20 @@ document.addEventListener('DOMContentLoaded', async function() {
       // Формируем поля для редактирования на основе itemData.type.fields
       let fieldsHtml = '';
       (itemData.type.fields || []).forEach(field => {
-        let value = (itemData.data && itemData.data[field.name] !== undefined) ? itemData.data[field.name] : '';
+        let value = itemData.data
+          ? (itemData.data[field.id] !== undefined ? itemData.data[field.id] : itemData.data[field.name])
+          : '';
         let inputHtml = '';
         if (field.field_type === 'string') {
-          inputHtml = `<input type="text" class="form-control" name="${field.name}" value="${value || ''}" ${field.is_required ? 'required' : ''}>`;
+          inputHtml = `<input type="text" class="form-control" name="${field.id}" value="${value || ''}" ${field.is_required ? 'required' : ''}>`;
         } else if (field.field_type === 'float') {
-          inputHtml = `<input type="number" step="any" class="form-control" name="${field.name}" value="${value || ''}" ${field.is_required ? 'required' : ''}>`;
+          inputHtml = `<input type="number" step="any" class="form-control" name="${field.id}" value="${value || ''}" ${field.is_required ? 'required' : ''}>`;
         } else if (field.field_type === 'enum') {
           // Для enum предполагаем, что возможные значения заранее известны, здесь просто пример
-          inputHtml = `<input type="text" class="form-control" name="${field.name}" value="${value || ''}" ${field.is_required ? 'required' : ''}>`;
+          inputHtml = `<input type="text" class="form-control" name="${field.id}" value="${value || ''}" ${field.is_required ? 'required' : ''}>`;
         } else if (field.field_type === 'bool') {
           inputHtml = `
-            <select class="form-select" name="${field.name}">
+            <select class="form-select" name="${field.id}">
               <option value="">—</option>
               <option value="true" ${value === true || value === "true" ? 'selected' : ''}>Да</option>
               <option value="false" ${value === false || value === "false" ? 'selected' : ''}>Нет</option>
@@ -337,9 +347,9 @@ document.addEventListener('DOMContentLoaded', async function() {
               dateValue = `${year}-${month}-${day}`;
             }
           }
-          inputHtml = `<input type="date" class="form-control" name="${field.name}" value="${dateValue}" ${field.is_required ? 'required' : ''}>`;
+          inputHtml = `<input type="date" class="form-control" name="${field.id}" value="${dateValue}" ${field.is_required ? 'required' : ''}>`;
         } else {
-          inputHtml = `<input type="text" class="form-control" name="${field.name}" value="${value || ''}">`;
+          inputHtml = `<input type="text" class="form-control" name="${field.id}" value="${value || ''}">`;
         }
         fieldsHtml += `
           <div class="mb-3">
@@ -401,7 +411,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       // Собираем все поля из формы
       let data = {};
       (itemData.type.fields || []).forEach(field => {
-        let el = form.querySelector(`[name="${field.name}"]`);
+        let el = form.querySelector(`[name="${field.id}"]`) || form.querySelector(`[name="${field.name}"]`);
         if (!el) return;
         let val = el.value;
         if (field.field_type === 'float') {
@@ -413,9 +423,15 @@ document.addEventListener('DOMContentLoaded', async function() {
         } else if (field.field_type === 'date') {
           val = val || null;
         }
-        data[field.name] = val;
+        data[field.id] = val;
       });
-      data['Описание'] = description;
+      // Описание по id поля (если оно есть)
+      const descField2 = (itemData.type.fields || []).find(f => f.name === 'Описание');
+      if (descField2) {
+        data[descField2.id] = description;
+      } else {
+        data['Описание'] = description;
+      }
 
       const payload = {
         name: name,

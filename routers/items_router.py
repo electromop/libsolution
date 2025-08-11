@@ -35,6 +35,9 @@ class FieldCreate(BaseModel):
     unit: Optional[str] = None
     is_required: bool = False
 
+class FieldOut(FieldCreate):
+    id: str
+
 class TypeCreate(BaseModel):
     name: str
 
@@ -66,7 +69,7 @@ class ItemOut(BaseModel):
 class TypeOutWithFields(BaseModel):
     id: str
     name: str
-    fields: List[FieldCreate]
+    fields: List[FieldOut]
 
     class Config:
         from_attributes = True
@@ -229,9 +232,9 @@ def view_item_json(item_id: str, db: Session = Depends(get_db), current_user: di
     type_obj = db.query(SubstanceType).filter(SubstanceType.id == item.type_id).first()
     if not type_obj:
         raise HTTPException(status_code=404, detail="Type not found")
-    # Получаем все поля типа
-    fields = [FieldCreate(
-        name=f.name, field_type=f.field_type, unit=f.unit, is_required=f.is_required
+    # Получаем все поля типа (включая id)
+    fields = [FieldOut(
+        id=f.id, name=f.name, field_type=f.field_type, unit=f.unit, is_required=f.is_required
     ) for f in type_obj.fields]
     type_out = TypeOutWithFields(
         id=type_obj.id,
