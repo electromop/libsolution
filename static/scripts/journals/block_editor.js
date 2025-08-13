@@ -41,11 +41,22 @@ class BlockEditorManager {
             cont.innerHTML = "";
             const wrapper = document.createElement('div');
             wrapper.className = 'mini-excel-container';
+            const tableRoot = document.createElement('div');
+            tableRoot.className = 'mini-excel-root';
+            wrapper.appendChild(tableRoot);
             cont.appendChild(wrapper);
-            const excel = new MiniExcel(wrapper, (table?.rows) || 10, (table?.cols) || 5);
+            const excel = new MiniExcel(tableRoot, (table?.rows) || 10, (table?.cols) || 5);
             if (table) excel.import(table);
             // После импорта сразу пересчитать, чтобы формулы показались
             excel.recalculate();
+            // Экспортируем инстанс для тулбара (merge/unmerge)
+            wrapper.__excel = excel;
+            tableRoot.__excel = excel;
+            const setActive = () => { window.activeExcel = excel; };
+            wrapper.addEventListener('focusin', setActive);
+            tableRoot.addEventListener('focusin', setActive);
+            wrapper.addEventListener('mousedown', setActive);
+            tableRoot.addEventListener('mousedown', setActive);
             excel.onChange = () => {
                 const currentId = el.getAttribute("data-block-id");
                 const serialized = excel.export();

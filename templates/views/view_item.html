@@ -63,8 +63,11 @@
                 <option value="0">Списать</option>
               </select>
             </div>
-            <div class="col-12 col-md-4">
-              <input type="number" step="any" min="0.0001" class="form-control" id="changeAmount" placeholder="Количество" required>
+            <div class="col-12 col-md-5">
+              <div class="input-group">
+                <input type="number" step="any" min="0.0001" class="form-control" id="changeAmount" placeholder="Количество" required>
+                <select class="form-select" id="changeUnit"></select>
+              </div>
             </div>
             <div class="col-12 col-md-4">
               <input type="text" class="form-control" id="changeReason" placeholder="Причина (необязательно)">
@@ -180,12 +183,14 @@ document.addEventListener('DOMContentLoaded', async function() {
   }
 
   // --- Текущее количество ---
-  let currentQuantity = 0;
+  let currentQuantity = 0; // в базовых единицах
   let currentQuantityUnit = '';
+  let defaultUnitRatio = 1;
   const currentQuantityBlock = document.getElementById('currentQuantityBlock');
   function renderCurrentQuantity() {
+    const qtyDisplay = (defaultUnitRatio && defaultUnitRatio !== 0) ? (currentQuantity / defaultUnitRatio) : currentQuantity;
     let unit = currentQuantityUnit ? ` <span class="text-muted" style="font-size:0.95em;">${currentQuantityUnit}</span>` : '';
-    currentQuantityBlock.innerHTML = `<span class="fw-bold">Текущее количество:</span> <span id="currentQuantityValue">${currentQuantity}</span>${unit}`;
+    currentQuantityBlock.innerHTML = `<span class="fw-bold">Текущее количество:</span> <span id="currentQuantityValue">${qtyDisplay}</span>${unit}`;
   }
 
   const itemId = getItemIdFromUrl();
@@ -221,11 +226,23 @@ document.addEventListener('DOMContentLoaded', async function() {
     <span class="badge bg-light text-secondary ms-2" style="font-size: 1rem;">${itemData.type.name}</span>
   `;
 
-  // Определяем единицу измерения для количества (ищем первое поле типа float с unit)
-  if (itemData.type && Array.isArray(itemData.type.fields)) {
-    const qtyField = itemData.type.fields.find(f => f.field_type === 'float' && f.unit);
-    if (qtyField) {
-      currentQuantityUnit = qtyField.unit;
+  // Определяем единицу измерения количества: берём default unit если есть
+  if (itemData.type && Array.isArray(itemData.type.units)) {
+    const defUnit = itemData.type.units.find(u => u.is_default);
+    if (defUnit) {
+      currentQuantityUnit = defUnit.name;
+      defaultUnitRatio = defUnit.ratio_to_base || 1;
+    }
+    const unitSelect = document.getElementById('changeUnit');
+    if (unitSelect) {
+      unitSelect.innerHTML = '';
+      itemData.type.units.forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = String(u.id);
+        opt.textContent = u.name;
+        if (u.is_default) opt.selected = true;
+        unitSelect.appendChild(opt);
+      });
     }
   }
 
@@ -498,6 +515,14 @@ document.addEventListener('DOMContentLoaded', async function() {
     const changeType = parseInt(changeTypeEl.value, 10);
     const amount = parseFloat(changeAmountEl.value);
     const reason = changeReasonEl.value;
+    // Переводим введённое количество в базовую единицу
+    let amountBase = amount;
+    const unitSelect = document.getElementById('changeUnit');
+    if (unitSelect && Array.isArray(itemData.type.units)) {
+      const selected = itemData.type.units.find(u => String(u.id) === String(unitSelect.value));
+      const ratio = selected ? (selected.ratio_to_base || 1) : 1;
+      amountBase = amount * ratio;
+    }
     if (!amount || amount <= 0) {
       quantityChangeMsg.innerHTML = '<span class="text-danger">Введите корректное количество</span>';
       return;
@@ -505,7 +530,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     const payload = {
       item_id: itemId,
       change_type: changeType, // 0 - списание, 1 - пополнение
-      amount: amount,
+      amount: amountBase,
       reason: reason
     };
     try {
@@ -564,14 +589,14 @@ document.addEventListener('DOMContentLoaded', async function() {
       history.forEach(change => {
         const date = change.created_at ? formatDateTimeLocal(change.created_at) : '';
         const op = change.change_type === 1 ? '<span class="text-success">Пополнение</span>' : '<span class="text-danger">Списание</span>';
-        const amount = change.amount;
+        const amount = (defaultUnitRatio && defaultUnitRatio !== 0) ? (change.amount / defaultUnitRatio) : change.amount;
         const reason = change.reason ? change.reason : '<span class="text-muted">—</span>';
         const user = change.user_email ? change.user_email : (change.user_id ? change.user_id : '<span class="text-muted">—</span>');
         tbody.insertAdjacentHTML('beforeend', `
           <tr>
             <td>${date}</td>
             <td>${op}</td>
-            <td>${amount}</td>
+            <td>${amount}${currentQuantityUnit ? ' ' + currentQuantityUnit : ''}</td>
             <td>${reason}</td>
             <td>${user}</td>
           </tr>

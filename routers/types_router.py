@@ -7,7 +7,7 @@ from typing import List, Optional, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel
-from models import SubstanceType, SubstanceField, get_db
+from models import SubstanceType, SubstanceField, SubstanceUnit, get_db
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
@@ -46,6 +46,11 @@ class TypeOut(BaseModel):
     id: str
     name: str
     fields: List[FieldOut]
+    # список единиц измерения
+    units: List[dict] | None = None
+
+class TypeUpdate(BaseModel):
+    name: Optional[str] = None
 
 # --- Эндпоинт для страницы index.html ---
 
@@ -79,6 +84,10 @@ def create_type(payload: TypeCreate, db: Session = Depends(get_db), current_user
     db.add(new_type)
     db.commit()
     db.refresh(new_type)
+    # Создаём базовую единицу измерения по умолчанию (1.0)
+    base_unit = SubstanceUnit(id=str(uuid4()), type_id=new_type.id, name="ед.", ratio_to_base=1.0, is_default=True)
+    db.add(base_unit)
+    db.commit()
     # аудит: добавление типа
     write_audit_log(
         method="POST",
@@ -90,7 +99,7 @@ def create_type(payload: TypeCreate, db: Session = Depends(get_db), current_user
         entity_id=new_type.id,
         details={"name": new_type.name},
     )
-    return TypeOut(id=new_type.id, name=new_type.name, fields=[])
+    return TypeOut(id=new_type.id, name=new_type.name, fields=[], units=[{"id": base_unit.id, "name": base_unit.name, "ratio_to_base": base_unit.ratio_to_base, "is_default": base_unit.is_default}])
 
 @router.get("/types/", response_model=List[TypeOut])
 def list_types(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
@@ -100,8 +109,45 @@ def list_types(db: Session = Depends(get_db), current_user: dict = Depends(get_c
         fields = [FieldOut(
             id=f.id, name=f.name, field_type=f.field_type, unit=f.unit, is_required=f.is_required
         ) for f in t.fields]
-        result.append(TypeOut(id=t.id, name=t.name, fields=fields))
+        # грузим единицы
+        units = db.query(SubstanceUnit).filter(SubstanceUnit.type_id == t.id).all()
+        result.append(TypeOut(
+            id=t.id,
+            name=t.name,
+            fields=fields,
+            units=[{"id": u.id, "name": u.name, "ratio_to_base": u.ratio_to_base, "is_default": u.is_default} for u in units]
+        ))
     return result
+
+@router.put("/types/{type_id}", response_model=TypeOut)
+def update_type(type_id: str, payload: TypeUpdate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    type_obj = db.query(SubstanceType).filter(SubstanceType.id == type_id).first()
+    if not type_obj:
+        raise HTTPException(status_code=404, detail="Type not found")
+    if payload.name is not None:
+        type_obj.name = payload.name
+    db.commit()
+    db.refresh(type_obj)
+    # собрать поля и единицы для ответа
+    fields = [FieldOut(id=f.id, name=f.name, field_type=f.field_type, unit=f.unit, is_required=f.is_required) for f in type_obj.fields]
+    units = db.query(SubstanceUnit).filter(SubstanceUnit.type_id == type_obj.id).all()
+    # аудит: изменение типа
+    write_audit_log(
+        method="PUT",
+        path=f"/types/{type_id}",
+        user_id=current_user.get("id"),
+        email=current_user.get("email"),
+        action="UPDATE_TYPE",
+        entity="substance_type",
+        entity_id=type_obj.id,
+        details={"changes": payload.model_dump(exclude_none=True)},
+    )
+    return TypeOut(
+        id=type_obj.id,
+        name=type_obj.name,
+        fields=fields,
+        units=[{"id": u.id, "name": u.name, "ratio_to_base": u.ratio_to_base, "is_default": u.is_default} for u in units]
+    )
 
 @router.get("/types/{type_id}/fields", response_model=List[FieldOut])
 def get_fields_by_type_id(type_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
@@ -112,6 +158,57 @@ def get_fields_by_type_id(type_id: str, db: Session = Depends(get_db), current_u
         id=f.id, name=f.name, field_type=f.field_type, unit=f.unit, is_required=f.is_required
     ) for f in type_instance.fields]
     return fields
+
+# --- Единицы измерения для типа ---
+class UnitIn(BaseModel):
+    name: str
+    ratio_to_base: float = 1.0
+    is_default: bool = False
+
+class UnitOut(BaseModel):
+    id: str
+    name: str
+    ratio_to_base: float
+    is_default: bool
+
+@router.get("/types/{type_id}/units", response_model=List[UnitOut])
+def list_units(type_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    units = db.query(SubstanceUnit).filter(SubstanceUnit.type_id == type_id).all()
+    return [UnitOut(id=u.id, name=u.name, ratio_to_base=u.ratio_to_base, is_default=u.is_default) for u in units]
+
+@router.post("/types/{type_id}/units", response_model=UnitOut)
+def add_unit(type_id: str, unit: UnitIn, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    # если помечена как дефолтная — снимем флаг с других
+    if unit.is_default:
+        db.query(SubstanceUnit).filter(SubstanceUnit.type_id == type_id, SubstanceUnit.is_default == True).update({SubstanceUnit.is_default: False})
+    u = SubstanceUnit(id=str(uuid4()), type_id=type_id, name=unit.name, ratio_to_base=unit.ratio_to_base, is_default=unit.is_default)
+    db.add(u)
+    db.commit()
+    db.refresh(u)
+    return UnitOut(id=u.id, name=u.name, ratio_to_base=u.ratio_to_base, is_default=u.is_default)
+
+@router.put("/types/{type_id}/units/{unit_id}", response_model=UnitOut)
+def update_unit(type_id: str, unit_id: str, unit: UnitIn, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    u = db.query(SubstanceUnit).filter(SubstanceUnit.id == unit_id, SubstanceUnit.type_id == type_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Unit not found")
+    if unit.is_default:
+        db.query(SubstanceUnit).filter(SubstanceUnit.type_id == type_id, SubstanceUnit.is_default == True).update({SubstanceUnit.is_default: False})
+    u.name = unit.name
+    u.ratio_to_base = unit.ratio_to_base
+    u.is_default = unit.is_default
+    db.commit()
+    db.refresh(u)
+    return UnitOut(id=u.id, name=u.name, ratio_to_base=u.ratio_to_base, is_default=u.is_default)
+
+@router.delete("/types/{type_id}/units/{unit_id}")
+def delete_unit(type_id: str, unit_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    u = db.query(SubstanceUnit).filter(SubstanceUnit.id == unit_id, SubstanceUnit.type_id == type_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Unit not found")
+    db.delete(u)
+    db.commit()
+    return {"status": "ok"}
 
 @router.post("/types/{type_id}/fields")
 def add_field(type_id: str, field: FieldCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):

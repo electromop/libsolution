@@ -11,7 +11,7 @@ from repository.journal_repository import (
     get_journal_content, get_journal_tags, get_journal_title, save_journal_content,
     add_tag_to_journal, remove_tag_from_journal, save_journal_title, search_journals,
     get_journal_blocks, update_journal_block, get_journal_blocks_after, create_journal_block, delete_journal_block,
-    reorder_journal_blocks,
+    reorder_journal_blocks, copy_journal,
 )
 from models import SessionLocal, Document, Folder
 from auth import get_current_user, get_current_user_for_websocket
@@ -167,6 +167,26 @@ async def move_journal(journal_id: int, payload: MoveJournalPayload, current_use
     db.commit()
     db.close()
     return JSONResponse({"status": "ok", "journal_id": journal_id, "folder_id": payload.folder_id})
+
+
+class CopyJournalPayload(BaseModel):
+    filename: str | None = None
+    folder_id: int | None = None
+
+
+@router.post("/api/journals/{journal_id}/copy")
+async def api_copy_journal(journal_id: int, payload: CopyJournalPayload, current_user: dict = Depends(get_current_user)):
+    """Создать копию журнала с блоками и тегами.
+    Опционально можно задать новое имя и целевую папку.
+    """
+    try:
+        new_doc = copy_journal(journal_id, new_filename=payload.filename, target_folder_id=payload.folder_id)
+        return JSONResponse({"status": "ok", "journal": new_doc})
+    except ValueError as e:
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=404)
+    except Exception:
+        # Не палим детали
+        return JSONResponse({"status": "error", "message": "Не удалось скопировать журнал"}, status_code=500)
 
 class MoveFolderPayload(BaseModel):
     parent_id: int | None = None

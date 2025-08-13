@@ -176,14 +176,34 @@ class TypeManager {
       row.appendChild(td);
       tbody.appendChild(row);
     } else {
+      // Инжектим стили для кнопки-раскрытия и анимации (один раз)
+      if (!document.getElementById('item-expand-styles')) {
+        const style = document.createElement('style');
+        style.id = 'item-expand-styles';
+        style.textContent = `
+          .toggle-btn{background:transparent;border:0;padding:4px;line-height:1;cursor:pointer}
+          .toggle-btn:focus{outline:none;box-shadow:none}
+          .toggle-btn .chevron{display:inline-block;transition:transform .2s ease}
+          .toggle-btn[aria-expanded="true"] .chevron{transform:rotate(90deg)}
+          .collapse-animated{overflow:hidden;max-height:0;opacity:0;padding:0;background:transparent;transition:max-height .25s ease,opacity .25s ease,padding .25s ease}
+          .collapse-animated.show{max-height:500px;opacity:1;padding:12px 16px;background:#f8f9fa}
+        `;
+        document.head.appendChild(style);
+      }
+
       // Создаём заголовки
       const headerRow = document.createElement('tr');
-      // Добавляем столбец "Название элемента" первым
+      // Столбец для раскрытия (первый)
+      const thExpand = document.createElement('th');
+      thExpand.textContent = '';
+      thExpand.scope = 'col';
+      thExpand.style.width = '36px';
+      headerRow.appendChild(thExpand);
+      // Столбец "Название элемента"
       const thName = document.createElement('th');
       thName.textContent = 'Название элемента';
       thName.scope = "col";
       headerRow.appendChild(thName);
-      console.log('создали название')
 
       typeObj.fields.forEach(f => {
         const th = document.createElement('th');
@@ -197,7 +217,7 @@ class TypeManager {
         // Нет данных
         const row = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = typeObj.fields.length + 1; // +1 для названия
+        td.colSpan = typeObj.fields.length + 2; // +1 для названия +1 для кнопки
         td.className = 'empty-message';
         td.textContent = 'Нет данных';
         row.appendChild(td);
@@ -206,7 +226,21 @@ class TypeManager {
         // Данные
         items.forEach(item => {
           const row = document.createElement('tr');
-          // Первый столбец — название элемента как ссылка на /items/<id>
+          // row.style.borderBottom = '0';
+          // Кнопка раскрытия (первый столбец)
+          const tdToggle = document.createElement('td');
+          tdToggle.style.textAlign = 'center';
+          tdToggle.style.verticalAlign = 'middle';
+          const toggleBtn = document.createElement('button');
+          toggleBtn.type = 'button';
+          toggleBtn.className = 'toggle-btn';
+          toggleBtn.setAttribute('aria-expanded', 'false');
+          const icon = document.createElement('i');
+          icon.className = 'bi chevron bi-chevron-right';
+          toggleBtn.appendChild(icon);
+          tdToggle.appendChild(toggleBtn);
+          row.appendChild(tdToggle);
+          // Столбец — название элемента как ссылка на /items/<id>
           const tdName = document.createElement('td');
           if (item.id) {
             const a = document.createElement('a');
@@ -220,6 +254,8 @@ class TypeManager {
           }
           row.appendChild(tdName);
 
+          // убрали вторую кнопку раскрытия
+
           typeObj.fields.forEach(f => {
             const td = document.createElement('td');
             const v = (item.data && (item.data[f.id] ?? item.data[f.name])) ?? null;
@@ -227,6 +263,73 @@ class TypeManager {
             row.appendChild(td);
           });
           tbody.appendChild(row);
+
+          // Строка подробностей (скрытая)
+          const detailsRow = document.createElement('tr');
+          const detailsTd = document.createElement('td');
+          detailsTd.colSpan = typeObj.fields.length + 2; // все колонки
+          detailsTd.style.background = 'transparent';
+          detailsTd.style.padding = '0';
+          detailsTd.style.borderTop = '0';
+          const detailsWrap = document.createElement('div');
+          detailsWrap.className = 'collapse-animated';
+          detailsWrap.innerHTML = `
+            <div class="row">
+              <div class="col-md-6 mb-2">
+                <div class="fw-semibold mb-1">Последние комментарии</div>
+                <div class="small text-muted" data-role="comments" data-loading="1">Загрузка...</div>
+              </div>
+              <div class="col-md-6 mb-2">
+                <div class="fw-semibold mb-1">Текущее количество</div>
+                <div class="small" data-role="quantity" data-loading="1">Загрузка...</div>
+              </div>
+            </div>`;
+          detailsTd.appendChild(detailsWrap);
+          detailsRow.appendChild(detailsTd);
+          tbody.appendChild(detailsRow);
+
+          // Обработчик раскрытия
+          let opened = false;
+          toggleBtn.addEventListener('click', async () => {
+            opened = !opened;
+            toggleBtn.setAttribute('aria-expanded', opened ? 'true' : 'false');
+            detailsWrap.classList.toggle('show', opened);
+            if (opened) {
+              // подгрузим данные, если нужно
+              const commentsBox = detailsTd.querySelector('[data-role="comments"]');
+              const quantityBox = detailsTd.querySelector('[data-role="quantity"]');
+              try {
+                if (commentsBox && commentsBox.getAttribute('data-loading') === '1') {
+                  const r = await fetch(`/items/${item.id}/comments`);
+                  const comments = await r.json();
+                  const last3 = comments.slice(0, 3);
+                  if (last3.length === 0) {
+                    commentsBox.textContent = 'Комментариев нет';
+                  } else {
+                    commentsBox.removeAttribute('data-loading');
+                    commentsBox.innerHTML = last3.map(c => {
+                      const dt = new Date(c.created_at);
+                      const dateStr = isNaN(dt) ? '' : dt.toLocaleString();
+                      const author = c.user && (c.user.username || c.user.email) ? ` — ${c.user.username || c.user.email}` : '';
+                      return `<div class="mb-1">${c.text}<span class="text-muted">${author} ${dateStr ? '('+dateStr+')' : ''}</span></div>`;
+                    }).join('');
+                  }
+                }
+              } catch (_) {
+                if (commentsBox) commentsBox.textContent = 'Ошибка загрузки';
+              }
+              try {
+                if (quantityBox && quantityBox.getAttribute('data-loading') === '1') {
+                  const r2 = await fetch(`/items/${item.id}/quantity`);
+                  const q = await r2.json();
+                  quantityBox.removeAttribute('data-loading');
+                  quantityBox.textContent = (q && typeof q.quantity === 'number') ? String(q.quantity) : '-';
+                }
+              } catch (_) {
+                if (quantityBox) quantityBox.textContent = 'Ошибка загрузки';
+              }
+            }
+          });
         });
       }
     }
@@ -555,6 +658,27 @@ class ModalManager {
   init() {
     document.getElementById('newTypeForm').onsubmit = (e) => this.createType(e);
     document.getElementById('addFieldForm').onsubmit = (e) => this.addField(e);
+    // Сохранение названия типа
+    const saveTypeNameBtn = document.getElementById('saveTypeNameBtn');
+    if (saveTypeNameBtn) {
+      saveTypeNameBtn.onclick = async () => {
+        try {
+          const typeId = this.typeManager.currentType;
+          const input = document.getElementById('editTypeName');
+          if (!typeId || !input) return;
+          const newName = input.value.trim();
+          if (!newName) return;
+          await fetch(`/types/${typeId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName })
+          });
+          await this.typeManager.fetchTypes();
+          this.renderFieldsList();
+          this.typeManager.renderTypeView();
+        } catch (_) {}
+      };
+    }
   }
 
   showTypeModal() {
@@ -619,6 +743,17 @@ class ModalManager {
     const currentTypeId = this.typeManager.currentType;
     // Находим объект типа по id
     const typeObj = this.typeManager.types.find(t => String(t.id) === String(currentTypeId));
+
+    // Проставим текущее имя типа в инпут
+    const editNameInput = document.getElementById('editTypeName');
+    if (editNameInput && typeObj) {
+      editNameInput.value = typeObj.name || '';
+    }
+    // Заголовок
+    const headerTypeName = document.getElementById('fieldsTypeName');
+    if (headerTypeName && typeObj) {
+      headerTypeName.textContent = typeObj.name || '';
+    }
 
     if (!typeObj || !typeObj.fields || typeObj.fields.length === 0) {
       const tr = document.createElement('tr');
@@ -716,6 +851,69 @@ class ModalManager {
 
       tbody.appendChild(tr);
     });
+
+    // ---- ЕДИНИЦЫ ИЗМЕРЕНИЯ ----
+    const unitsTbody = document.getElementById('unitsList');
+    const addUnitForm = document.getElementById('addUnitForm');
+    if (unitsTbody) {
+      unitsTbody.innerHTML = '<tr><td colspan="4" class="text-muted">Загрузка...</td></tr>';
+      fetch(`/types/${typeObj.id}/units`).then(r => r.json()).then(units => {
+        unitsTbody.innerHTML = '';
+        if (!units.length) {
+          unitsTbody.innerHTML = '<tr><td colspan="4" class="text-muted">Единицы не добавлены</td></tr>';
+        }
+        units.forEach(u => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${u.name}</td>
+            <td>${u.ratio_to_base}</td>
+            <td>${u.is_default ? '<span class="badge bg-success">Да</span>' : '<span class="badge bg-secondary">Нет</span>'}</td>
+            <td>
+              <button type="button" class="btn btn-sm btn-outline-primary me-2" data-action="set-default" data-id="${u.id}">Сделать по умолчанию</button>
+              <button type="button" class="btn btn-sm btn-outline-danger" data-action="delete" data-id="${u.id}">Удалить</button>
+            </td>
+          `;
+          unitsTbody.appendChild(tr);
+        });
+        // обработчики действий
+        unitsTbody.querySelectorAll('button[data-action="delete"]').forEach(btn => {
+          btn.onclick = async () => {
+            const id = btn.getAttribute('data-id');
+            await fetch(`/types/${typeObj.id}/units/${id}`, { method: 'DELETE' });
+            this.renderFieldsList();
+          };
+        });
+        unitsTbody.querySelectorAll('button[data-action="set-default"]').forEach(btn => {
+          btn.onclick = async () => {
+            const id = btn.getAttribute('data-id');
+            // Поменяем только флаг is_default
+            await fetch(`/types/${typeObj.id}/units/${id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: '', ratio_to_base: 1, is_default: true })
+            });
+            this.renderFieldsList();
+          };
+        });
+      });
+    }
+    if (addUnitForm) {
+      addUnitForm.onsubmit = async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const name = form.name.value.trim();
+        const ratio = parseFloat(form.ratio_to_base.value || '1');
+        const def = !!form.is_default.checked;
+        if (!name) return;
+        await fetch(`/types/${typeObj.id}/units`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, ratio_to_base: ratio, is_default: def })
+        });
+        form.reset();
+        this.renderFieldsList();
+      };
+    }
 
     // Блокируем форму добавления, если редактируем поле
     const addFieldForm = document.getElementById('addFieldForm');

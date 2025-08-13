@@ -1,4 +1,5 @@
 import re, uuid
+from copy import deepcopy
 from models import SessionLocal, Document, Tag, DocumentBlock
 
 def get_journal_content(journal_id: int):
@@ -397,3 +398,56 @@ def search_journals(query: str):
                 doc_ids.add(doc.id)
     db.close()
     return {"by_title": journals_by_title, "by_tags": journals_by_tags}
+
+
+def copy_journal(journal_id: int, new_filename: str | None = None, target_folder_id: int | None = None) -> dict:
+    """Создаёт копию журнала: документ, блоки и теги.
+
+    Возвращает словарь с данными нового журнала: {id, filename, folder_id}.
+    """
+    db = SessionLocal()
+    try:
+        # Оригинальный документ
+        original: Document | None = db.query(Document).filter(Document.id == journal_id).first()
+        if original is None:
+            raise ValueError("Журнал не найден")
+
+        # Определяем имя и папку для копии
+        copy_filename: str = new_filename if (new_filename is not None and new_filename.strip() != "") else f"{original.filename or 'Без названия'} (копия)"
+        copy_folder_id: int | None = target_folder_id if target_folder_id is not None else original.folder_id
+
+        # Создаём новый документ
+        new_doc = Document(filename=copy_filename, content="", folder_id=copy_folder_id)
+        db.add(new_doc)
+        db.flush()  # получить id
+
+        # Копируем теги (привязываем существующие Tag к новому документу)
+        for tag in list(original.tags or []):
+            new_doc.tags.append(tag)
+
+        # Копируем блоки
+        blocks = (
+            db.query(DocumentBlock)
+            .filter(DocumentBlock.document_id == original.id)
+            .order_by(DocumentBlock.position)
+            .all()
+        )
+        for blk in blocks:
+            payload = deepcopy(blk.data) if isinstance(blk.data, dict) else blk.data
+            new_block = DocumentBlock(
+                id=str(uuid.uuid4()),
+                document_id=new_doc.id,
+                block_type=blk.block_type,
+                data=payload,
+                position=blk.position,
+            )
+            db.add(new_block)
+
+        # Если блоков нет, но есть устаревшее текстовое содержимое, перенесём его
+        if not blocks and (original.content or ""):
+            new_doc.content = original.content or ""
+
+        db.commit()
+        return {"id": new_doc.id, "filename": new_doc.filename, "folder_id": new_doc.folder_id}
+    finally:
+        db.close()

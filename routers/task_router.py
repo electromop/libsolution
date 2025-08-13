@@ -12,7 +12,7 @@ import uuid
 from sqlalchemy import Column, String, Integer, DateTime, Text, inspect
 from sqlalchemy.orm import declarative_base
 from datetime import datetime, UTC
-from models import engine as main_engine, SessionLocal, SubstanceItem, SubstanceQuantityChange, ImportTask
+from models import engine as main_engine, SessionLocal, SubstanceItem, SubstanceQuantityChange, ImportTask, SubstanceUnit, SubstanceItemComment
 from pydantic import BaseModel
 from auth import get_current_user
 
@@ -43,6 +43,8 @@ def import_items_from_csv_db(file_bytes, db_session_factory, task_id, type_id):
     Прогресс и ошибки пишутся в ImportTask в БД.
     type_id передаётся отдельно, в CSV его нет.
     Если в таблице есть столбец "Количество", то создаётся запись о пополнении.
+    Новое: поддерживается столбец единицы количества (например: "Единица", "Ед. изм.", "Unit").
+    Количество конвертируется в базовую единицу типа по коэффициенту единицы (ratio_to_base).
     """
     db = db_session_factory()
     try:
@@ -63,9 +65,28 @@ def import_items_from_csv_db(file_bytes, db_session_factory, task_id, type_id):
         imported = 0
         error_messages = []
 
+        # Подготовим справочник единиц для типа
+        units = db.query(SubstanceUnit).filter(SubstanceUnit.type_id == type_id).all()
+        default_ratio = 1.0
+        name_to_ratio = {}
+        for u in units:
+            if u.is_default:
+                default_ratio = u.ratio_to_base or 1.0
+            if u.name:
+                name_to_ratio[u.name.strip().lower()] = u.ratio_to_base or 1.0
+
+        UNIT_COLS = [
+            "Единица", "Ед. изм.", "ед. изм.", "единица",
+            "Unit", "UNIT", "unit",
+        ]
+        COMMENT_COLS = [
+            "Комментарий", "комментарий", "Комментарий ", "коммент",
+            "Comment", "COMMENT", "comment",
+        ]
+
         for idx, row in enumerate(rows):
             try:
-                name = row.get("name")
+                name = row.get("Название")
                 data = {}
                 # Если есть столбец data, пробуем его разобрать как JSON, иначе собираем все поля кроме name и Количество
                 if "data" in row and row["data"]:
@@ -76,10 +97,11 @@ def import_items_from_csv_db(file_bytes, db_session_factory, task_id, type_id):
                         error_messages.append(f"Строка {idx+1}: ошибка парсинга data: {e}")
                         continue
                 else:
-                    # Собираем все поля кроме name и Количество
-                    data = {k: v for k, v in row.items() if k not in ("name", "Количество") and v != ""}
+                    # Собираем все поля кроме name, Количество, колонок единицы и комментария
+                    exclude_keys = set(["Название", "Количество"]) | set(UNIT_COLS) | set(COMMENT_COLS)
+                    data = {k: v for k, v in row.items() if k not in exclude_keys and v != ""}
                 if not name:
-                    error_messages.append(f"Строка {idx+1}: не указано имя (name)")
+                    error_messages.append(f"Строка {idx+1}: не указано имя (Название)")
                     continue
                 # Добавляем вещество
                 new_item_id = str(uuid.uuid4())
@@ -94,23 +116,52 @@ def import_items_from_csv_db(file_bytes, db_session_factory, task_id, type_id):
 
                 # Если есть поле "Количество" и оно не пустое, создаём запись о пополнении
                 qty_value = row.get("Количество") or row.get("количество") or row.get("quantity") or row.get("Quantity")
+                # Определяем единицу (по имени) из возможных колонок
+                unit_name = None
+                for col in UNIT_COLS:
+                    if col in row and str(row[col]).strip() != "":
+                        unit_name = str(row[col]).strip()
+                        break
                 if qty_value is not None and str(qty_value).strip() != "":
                     try:
-                        amount = float(qty_value)
+                        # поддержаем десятичные запятые
+                        qty_str = str(qty_value).replace(',', '.')
+                        amount = float(qty_str)
+                        # конвертируем в базовую единицу типа
+                        ratio = default_ratio
+                        if unit_name:
+                            ratio = name_to_ratio.get(unit_name.strip().lower(), default_ratio)
+                        amount_base = amount * (ratio or 1.0)
                         if amount > 0:
                             new_change = SubstanceQuantityChange(
                                 id=str(uuid.uuid4()),
                                 item_id=new_item_id,
                                 user_id=None,
                                 change_type=True,  # True = пополнение
-                                amount=amount,
-                                reason="Импорт из CSV",
+                                amount=amount_base,
+                                reason=f"Импорт из CSV{f' ({unit_name})' if unit_name else ''}",
                                 created_at=datetime.now(UTC)
                             )
                             db.add(new_change)
                     except Exception as e:
                         error_messages.append(f"Строка {idx+1}: ошибка обработки количества: {e}")
                         # Не прерываем импорт вещества, только не добавляем пополнение
+
+                # Если есть комментарий в одной из колонок, добавим как комментарий к веществу
+                comment_text = None
+                for col in COMMENT_COLS:
+                    if col in row and str(row[col]).strip() != "":
+                        comment_text = str(row[col]).strip()
+                        break
+                if comment_text:
+                    new_comment = SubstanceItemComment(
+                        id=str(uuid.uuid4()),
+                        item_id=new_item_id,
+                        user_id=None,
+                        text=comment_text,
+                        created_at=datetime.now(UTC)
+                    )
+                    db.add(new_comment)
 
                 imported += 1
                 # Периодически коммитим и обновляем прогресс (например, каждые 10)

@@ -110,6 +110,9 @@ class SubstanceType(Base):
     id = Column(String, primary_key=True)  # UUID храним как строку
     name = Column(String)
     fields = relationship("SubstanceField", back_populates="type")
+    # Единицы измерения количества для данного типа
+    # Связь объявлена только с одной стороны; обратная не требуется для работы
+    
 
 class SubstanceField(Base):
     __tablename__ = "substance_field"
@@ -201,6 +204,14 @@ class AuditLog(Base):
     ip = Column(String, nullable=True)
     user_agent = Column(String, nullable=True)
     details = Column(JSON, nullable=True)
+
+class SubstanceUnit(Base):
+    __tablename__ = "substance_unit"
+    id = Column(String, primary_key=True)  # UUID как строка
+    type_id = Column(ForeignKey("substance_type.id"), nullable=False)
+    name = Column(String, nullable=False)  # Наименование, напр. "г", "мл"
+    ratio_to_base = Column(Float, default=1.0)  # Коэффициент к базовой единице типа
+    is_default = Column(Boolean, default=False)  # Единица по умолчанию для отображения
 
 Base.metadata.create_all(bind=engine)
 

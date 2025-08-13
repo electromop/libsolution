@@ -5,12 +5,51 @@
       <div class="modal-content">
         <div class="modal-header">
           <h1 class="modal-title fs-5" id="fieldsModalLabel">
-            Поля типа: <span id="fieldsTypeName"></span>
+            Настройки типа: <span id="fieldsTypeName"></span>
           </h1>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
         </div>
         <div class="modal-body">
           <div class="mb-3">
+            <label for="editTypeName" class="form-label">Название типа</label>
+            <div class="input-group">
+              <input id="editTypeName" class="form-control" placeholder="Введите название типа" />
+              <button id="saveTypeNameBtn" class="btn btn-outline-primary" type="button">Сохранить</button>
+            </div>
+          </div>
+          <div class="mb-4">
+            <h5 class="mb-2">Единицы измерения количества</h5>
+            <table class="table table-bordered table-hover align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Единица</th>
+                  <th>Коэффициент к базовой</th>
+                  <th>По умолчанию</th>
+                  <th>Действия</th>
+                </tr>
+              </thead>
+              <tbody id="unitsList">
+                <!-- сюда будут загружены единицы из JS -->
+              </tbody>
+            </table>
+            <form id="addUnitForm" class="row g-2 align-items-center mt-2">
+              <div class="col-12 col-sm-auto">
+                <input class="form-control" name="name" placeholder="Ед. изм. (например, г, мл)" required />
+              </div>
+              <div class="col-6 col-sm-auto">
+                <input class="form-control" name="ratio_to_base" placeholder="К базовой (1.0)" type="number" step="any" value="1" required />
+              </div>
+              <div class="col-6 col-sm-auto form-check">
+                <input class="form-check-input" type="checkbox" name="is_default" id="isDefaultUnit" />
+                <label class="form-check-label" for="isDefaultUnit">По умолчанию</label>
+              </div>
+              <div class="col-12 col-sm-auto">
+                <button class="btn btn-primary" type="submit">Добавить единицу</button>
+              </div>
+            </form>
+          </div>
+          <hr>
+          <div class="mt-4">
             <h5 class="mb-2">Поля типа</h5>
             <table class="table table-bordered table-hover align-middle" id="fieldsListTable">
               <thead class="table-light">
@@ -26,35 +65,32 @@
                 <!-- Сюда будут добавляться поля через JS -->
               </tbody>
             </table>
+            <form id="addFieldForm" class="row g-2 align-items-center">
+              <div class="col-12 col-sm-auto">
+                <input class="form-control" name="name" placeholder="Название поля" required />
+              </div>
+              <div class="col-6 col-sm-auto">
+                <select class="form-select" name="field_type" required>
+                  <option value="string">Строка</option>
+                  <option value="int">Целое</option>
+                  <option value="float">Число</option>
+                  <option value="bool">Логический</option>
+                  <option value="date">Дата</option>
+                  <option value="enum">Перечисление</option>
+                </select>
+              </div>
+              <div class="col-6 col-sm-auto">
+                <input class="form-control" name="unit" placeholder="Ед. изм." style="width:130px;" />
+              </div>
+              <div class="col-6 col-sm-auto form-check">
+                <input class="form-check-input" type="checkbox" name="is_required" id="isRequiredField" />
+                <label class="form-check-label" for="isRequiredField">Обязательное</label>
+              </div>
+              <div class="col-6 col-sm-auto">
+                <button class="btn btn-primary" type="submit">Добавить</button>
+              </div>
+            </form>
           </div>
-          <hr>
-          <form id="addFieldForm" class="row g-2 align-items-center">
-            <div class="col-auto">
-              <input class="form-control" name="name" placeholder="Название поля" required />
-            </div>
-            <div class="col-auto">
-              <select class="form-select" name="field_type" required>
-                <option value="string">Строка</option>
-                <option value="int">Целое</option>
-                <option value="float">Число</option>
-                <option value="bool">Логический</option>
-                <option value="date">Дата</option>
-                <option value="enum">Перечисление</option>
-              </select>
-            </div>
-            <div class="col-auto">
-              <input class="form-control" name="unit" placeholder="Ед. изм." style="width:130px;" />
-            </div>
-            <div class="col-auto form-check">
-              <input class="form-check-input" type="checkbox" name="is_required" id="isRequiredField" />
-              <label class="form-check-label" for="isRequiredField">
-                Обязательное
-              </label>
-            </div>
-            <div class="col-auto">
-              <button class="btn btn-primary" type="submit">Добавить</button>
-            </div>
-          </form>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Готово</button>

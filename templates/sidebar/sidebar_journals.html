@@ -630,6 +630,7 @@ function renderJournals(journals, collapsed, allFolders, currentFolderId) {
                                     ${"&nbsp;".repeat(f.level * 2)}<i class="bi bi-folder-fill me-1"></i> ${escapeHtml(f.name)}
                                 </div>
                             `).join('')}
+                        <div class="dropdown-item" data-action="copy-journal"><i class="bi bi-files me-1"></i> Копировать</div>
                     </div>
                 </div>
             </div>
@@ -852,6 +853,44 @@ function rerenderFolders() {
             const folderId = this.getAttribute('data-move-folder-id');
             if (journalId && folderId) {
                 moveJournalToFolder(journalId, folderId);
+            }
+        });
+    });
+
+    // --- Обработчик для "Копировать" ---
+    foldersList.querySelectorAll('.custom-dropdown-menu [data-action="copy-journal"]').forEach(copyBtn => {
+        copyBtn.addEventListener('click', async function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const menu = this.closest('.custom-dropdown-menu');
+            if (menu) menu.classList.remove('show');
+            const journalId = menu.getAttribute('data-journal-id');
+            if (!journalId) return;
+            try {
+                // Простое prompt для имени копии; если отмена — используем имя по умолчанию на сервере
+                const newName = prompt('Название копии журнала (необязательно):');
+                const payload = newName && newName.trim() !== '' ? { filename: newName.trim() } : {};
+                const resp = await fetch(`/api/journals/${journalId}/copy`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!resp.ok) {
+                    alert('Не удалось копировать журнал');
+                    return;
+                }
+                const data = await resp.json();
+                // Обновляем дерево папок
+                const treeResp = await fetch('/api/folders');
+                const tree = await treeResp.json();
+                foldersTreeData = tree;
+                rerenderFolders();
+                // Переход к новому журналу
+                if (data && data.journal && data.journal.id) {
+                    window.location.href = `/journal/${data.journal.id}`;
+                }
+            } catch (err) {
+                alert('Ошибка сети при копировании');
             }
         });
     });

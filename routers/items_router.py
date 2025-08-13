@@ -14,7 +14,7 @@ from datetime import datetime, UTC
 from auth import get_current_user
 from repository.audit_repository import write_audit_log
 
-from models import SubstanceItem, SubstanceType, SubstanceField, get_db
+from models import SubstanceItem, SubstanceType, SubstanceField, SubstanceUnit, get_db
 
 router = APIRouter(
     prefix="",
@@ -70,6 +70,7 @@ class TypeOutWithFields(BaseModel):
     id: str
     name: str
     fields: List[FieldOut]
+    units: Optional[List[dict]] = None
 
     class Config:
         from_attributes = True
@@ -236,10 +237,13 @@ def view_item_json(item_id: str, db: Session = Depends(get_db), current_user: di
     fields = [FieldOut(
         id=f.id, name=f.name, field_type=f.field_type, unit=f.unit, is_required=f.is_required
     ) for f in type_obj.fields]
+    # Единицы типа
+    units = db.query(SubstanceUnit).filter(SubstanceUnit.type_id == type_obj.id).all()
     type_out = TypeOutWithFields(
         id=type_obj.id,
         name=type_obj.name,
-        fields=fields
+        fields=fields,
+        units=[{"id": u.id, "name": u.name, "ratio_to_base": u.ratio_to_base, "is_default": u.is_default} for u in units]
     )
     return ItemOutFull(
         id=item.id,

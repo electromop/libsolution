@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
@@ -78,3 +79,17 @@ def get_quantity_history(item_id: str, db: Session = Depends(get_db), current_us
             "user_email": getattr(ch.user, "email", None) if ch.user else None
         })
     return result
+
+@router.get("/items/{item_id}/quantity")
+def get_current_quantity(item_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    # Текущее количество = сумма пополнений - сумма списаний
+    added = db.query(func.coalesce(func.sum(SubstanceQuantityChange.amount), 0.0)).filter(
+        SubstanceQuantityChange.item_id == item_id,
+        SubstanceQuantityChange.change_type == True
+    ).scalar() or 0.0
+    removed = db.query(func.coalesce(func.sum(SubstanceQuantityChange.amount), 0.0)).filter(
+        SubstanceQuantityChange.item_id == item_id,
+        SubstanceQuantityChange.change_type == False
+    ).scalar() or 0.0
+    quantity = float(added) - float(removed)
+    return {"quantity": quantity}

@@ -226,4 +226,22 @@ document.addEventListener("DOMContentLoaded", () => {
             if (typeof excel.ensureFocus === 'function') excel.ensureFocus();
         }
     };
+    window.deleteActiveTable = function(e) {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        const excel = getActiveExcel();
+        if (!excel) return;
+        const blockEl = excel.container && excel.container.closest ? excel.container.closest('.editor-block') : null;
+        if (!blockEl) return;
+        const blockId = blockEl.getAttribute('data-block-id');
+        if (!confirm('Удалить таблицу?')) return;
+        try {
+            if (typeof blockEditor?.onBlockDelete === 'function') {
+                blockEditor.onBlockDelete(blockId);
+            } else if (typeof window.wsBlocks?.sendBlockDelete === 'function') {
+                window.wsBlocks.sendBlockDelete(blockId);
+            }
+        } catch (_) {}
+        try { blockEl.remove(); } catch (_) {}
+        if (window.activeExcel === excel) window.activeExcel = null;
+    };
 });
