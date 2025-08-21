@@ -97,13 +97,14 @@ document.addEventListener('DOMContentLoaded', function() {
         recentSearchesContainer.style.display = 'none';
 
         // Параллельные запросы к разным эндпоинтам
-        const endpoints = [
+        const itemEndpoints = [
             `/search/name/?query=${encodeURIComponent(query)}`,
             `/search/data/?query=${encodeURIComponent(query)}`
         ];
+        const journalsEndpoint = `/search?query=${encodeURIComponent(query)}`; // из journal_router
         try {
-            const [byName, byData] = await Promise.all(
-                endpoints.map(async url => {
+            const [byName, byData, journalsResp] = await Promise.all([
+                ...itemEndpoints.map(async url => {
                     const resp = await fetch(url);
                     let json = [];
                     try {
@@ -111,22 +112,47 @@ document.addEventListener('DOMContentLoaded', function() {
                     } catch (e) {
                         console.warn('Ошибка парсинга JSON для', url, e);
                     }
-                    // Логирование ответа
                     console.log(`[SEARCH][API] GET ${url}`, json);
                     return resp.ok ? json : [];
-                })
-            );
-            // Объединяем и убираем дубли по id
-            const all = [...byName, ...byData];
-            const unique = [];
-            const seen = new Set();
-            for (const item of all) {
-                if (!seen.has(item.id)) {
-                    unique.push(item);
-                    seen.add(item.id);
+                }),
+                (async () => {
+                    try {
+                        const resp = await fetch(journalsEndpoint);
+                        const json = await resp.json();
+                        console.log(`[SEARCH][API] GET ${journalsEndpoint}`, json);
+                        return resp.ok ? json : null;
+                    } catch (e) {
+                        console.warn('Ошибка запроса журналов', e);
+                        return null;
+                    }
+                })()
+            ]);
+
+            // Объединяем и убираем дубли для items по id
+            const allItems = [...byName, ...byData];
+            const uniqueItems = [];
+            const seenItemIds = new Set();
+            for (const item of allItems) {
+                if (item && !seenItemIds.has(item.id)) {
+                    uniqueItems.push(item);
+                    seenItemIds.add(item.id);
                 }
             }
-            renderResults(unique, query);
+
+            // Собираем журналы: by_title + by_tags, убираем дубли по id
+            const jTitle = (journalsResp && Array.isArray(journalsResp.by_title)) ? journalsResp.by_title : [];
+            const jTags = (journalsResp && Array.isArray(journalsResp.by_tags)) ? journalsResp.by_tags : [];
+            const allJournals = [...jTitle, ...jTags];
+            const uniqueJournals = [];
+            const seenJournalIds = new Set();
+            for (const j of allJournals) {
+                if (j && !seenJournalIds.has(j.id)) {
+                    uniqueJournals.push(j);
+                    seenJournalIds.add(j.id);
+                }
+            }
+
+            renderCombinedResults(uniqueItems, uniqueJournals, query);
             addRecentSearch(query);
         } catch (e) {
             console.error('[SEARCH][API] Ошибка поиска:', e);
@@ -144,39 +170,60 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function renderResults(items, query) {
+    function renderCombinedResults(items, journals, query) {
         searchResults.innerHTML = '';
-        if (!items.length) {
+        const hasItems = Array.isArray(items) && items.length > 0;
+        const hasJournals = Array.isArray(journals) && journals.length > 0;
+        if (!hasItems && !hasJournals) {
             searchResults.innerHTML = `<div class="text-muted px-2 py-2">Ничего не найдено</div>`;
             return;
         }
-        items.forEach(item => {
-            // Красивый вывод: название, тип, дата, часть data
-            const name = item.name ? highlight(item.name, query) : '<span class="text-muted">Без названия</span>';
-            const type = item.type_id ? `<span class="badge bg-secondary ms-2"></span>` : '';
-            const created = item.created_at ? `<span class="text-muted ms-2" title="Создано">${new Date(item.created_at).toLocaleString('ru-RU')}</span>` : '';
-            // Показываем до 2-3 полей из data
-            let dataFields = '';
-            if (item.data && typeof item.data === 'object') {
-                const keys = Object.keys(item.data).slice(0, 3);
-                if (keys.length) {
-                    dataFields = '<div class="small text-muted mt-1">';
-                    keys.forEach(k => {
-                        let val = item.data[k];
-                        if (typeof val === 'string') val = highlight(val, query);
-                        dataFields += `<span class="me-2"><b>${k}:</b> ${val}</span>`;
-                    });
-                    dataFields += '</div>';
-                }
+
+        // Журналы
+        if (hasJournals) {
+            searchResults.innerHTML += `<div class="list-group-item list-group-item-secondary small text-uppercase">Журналы</div>`;
+            journals.forEach(j => {
+                const title = j.filename ? highlight(j.filename, query) : '<span class="text-muted">Без названия</span>';
+                searchResults.innerHTML += `
+                    <a href="/journal/${encodeURIComponent(j.id)}" class="list-group-item list-group-item-action">
+                        <div class="fw-bold">${title}</div>
+                    </a>
+                `;
+            });
+        }
+
+        // Вещества
+        if (hasItems) {
+            if (hasJournals) {
+                searchResults.innerHTML += `<div class="list-group-item list-group-item-secondary small text-uppercase mt-2">Вещества</div>`;
+            } else {
+                searchResults.innerHTML += `<div class="list-group-item list-group-item-secondary small text-uppercase">Вещества</div>`;
             }
-            // Теперь делаем клик по элементу переходом на страницу вещества
-            searchResults.innerHTML += `
-                <a href="/item?item_id=${encodeURIComponent(item.id)}" class="list-group-item list-group-item-action">
-                    <div class="fw-bold">${name} ${type} ${created}</div>
-                    ${dataFields}
-                </a>
-            `;
-        });
+            items.forEach(item => {
+                const name = item.name ? highlight(item.name, query) : '<span class="text-muted">Без названия</span>';
+                const type = item.type_id ? `<span class="badge bg-secondary ms-2"></span>` : '';
+                const created = item.created_at ? `<span class="text-muted ms-2" title="Создано">${new Date(item.created_at).toLocaleString('ru-RU')}</span>` : '';
+                let dataFields = '';
+                if (item.data && typeof item.data === 'object') {
+                    const keys = Object.keys(item.data).slice(0, 3);
+                    if (keys.length) {
+                        dataFields = '<div class="small text-muted mt-1">';
+                        keys.forEach(k => {
+                            let val = item.data[k];
+                            if (typeof val === 'string') val = highlight(val, query);
+                            dataFields += `<span class=\"me-2\"><b>${k}:</b> ${val}</span>`;
+                        });
+                        dataFields += '</div>';
+                    }
+                }
+                searchResults.innerHTML += `
+                    <a href="/item?item_id=${encodeURIComponent(item.id)}" class="list-group-item list-group-item-action">
+                        <div class="fw-bold">${name} ${type} ${created}</div>
+                        ${dataFields}
+                    </a>
+                `;
+            });
+        }
     }
 
     // --- События ---

@@ -39,6 +39,22 @@
   opacity: 0.5;
 }
 
+/* Кнопка добавления текста: минималистично, видна только при фокусе/hover блока */
+.editor-block .block-actions { display: none; }
+.editor-block:hover .block-actions,
+.editor-block:focus-within .block-actions { display: block; }
+.editor-block .add-text-btn {
+  border: 1px solid #e1e5eb;
+  background: #fff;
+  color: #6c757d;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.editor-block .add-text-btn:hover { color: #0d6efd; border-color: #bcd0ff; }
+
 .editor-block.dragging {
   opacity: 0.5;
 }

@@ -133,8 +133,8 @@ class WebSocketBlockManager {
             block_id: blockId,
         };
         if (typeof payloadOrHtml === 'object' && payloadOrHtml !== null) {
-            // Поддержка image_url для image-блоков; html может игнорироваться на бэкенде
-            this.ws.send(JSON.stringify({ ...base, html: payloadOrHtml.html || "", table: payloadOrHtml.table || null, image_url: payloadOrHtml.image_url || null }));
+            // Поддержка image_url и image_width для image-блоков; html может игнорироваться на бэкенде
+            this.ws.send(JSON.stringify({ ...base, html: payloadOrHtml.html || "", table: payloadOrHtml.table || null, image_url: payloadOrHtml.image_url || null, image_width: payloadOrHtml.image_width ?? null }));
         } else {
             this.ws.send(JSON.stringify({ ...base, html: String(payloadOrHtml || "") }));
         }

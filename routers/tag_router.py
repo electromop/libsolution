@@ -40,7 +40,7 @@ def create_tag(tag: TagCreate, db: Session = Depends(get_db), current_user: dict
     return new_tag
 
 @router.get("/tags/", response_model=List[TagOut])
-def list_tags(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+def list_tags(db: Session = Depends(get_db)):
     tags = db.query(SubstanceTag).all()
     return tags
 

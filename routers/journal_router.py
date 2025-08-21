@@ -12,8 +12,10 @@ from repository.journal_repository import (
     add_tag_to_journal, remove_tag_from_journal, save_journal_title, search_journals,
     get_journal_blocks, update_journal_block, get_journal_blocks_after, create_journal_block, delete_journal_block,
     reorder_journal_blocks, copy_journal,
+    set_document_privacy, list_document_access, grant_document_access, revoke_document_access,
+    user_can_read_document, user_can_edit_document
 )
-from models import SessionLocal, Document, Folder
+from models import SessionLocal, Document, Folder, Tag
 from auth import get_current_user, get_current_user_for_websocket
 from connection_manager import manager
 import os
@@ -37,6 +39,9 @@ templates = Jinja2Templates(directory="templates")
 
 @router.get("/journal/{journal_id}")
 async def journal_page(request: Request, journal_id: int, current_user: dict = Depends(get_current_user)):
+    # Проверка доступа на чтение
+    if not user_can_read_document(current_user["id"], journal_id):
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
     content = get_journal_content(journal_id)
     tags = get_journal_tags(journal_id)
     title = get_journal_title(journal_id)
@@ -59,6 +64,38 @@ async def get_all_journals(request: Request, current_user: dict = Depends(get_cu
         "title": "Журналы"
     })
 
+# --- Global tags API based on Tag model ---
+class TagCreate(BaseModel):
+    name: str
+
+class TagOut(BaseModel):
+    id: int
+    name: str
+
+@router.get("/api/tags", response_model=list[TagOut])
+async def api_list_tags(current_user: dict = Depends(get_current_user)):
+    db = SessionLocal()
+    try:
+        tags = db.query(Tag).order_by(Tag.name.asc()).all()
+        return [{"id": t.id, "name": t.name} for t in tags]
+    finally:
+        db.close()
+
+@router.post("/api/tags", response_model=TagOut)
+async def api_create_tag(payload: TagCreate, current_user: dict = Depends(get_current_user)):
+    db = SessionLocal()
+    try:
+        existing = db.query(Tag).filter(Tag.name == payload.name).first()
+        if existing:
+            return {"id": existing.id, "name": existing.name}
+        t = Tag(name=payload.name)
+        db.add(t)
+        db.commit()
+        db.refresh(t)
+        return {"id": t.id, "name": t.name}
+    finally:
+        db.close()
+
 # --- API для получения структуры папок и журналов ---
 @router.get("/api/folders")
 async def api_get_folders(request: Request, current_user: dict = Depends(get_current_user)):
@@ -67,14 +104,18 @@ async def api_get_folders(request: Request, current_user: dict = Depends(get_cur
     """
     db = SessionLocal()
     folders = db.query(Folder).all()
-    unsorted_journals = db.query(Document).filter(Document.folder_id == None).all()
+    # Фильтруем документы по доступности
+    # Публичные или к которым есть доступ для текущего пользователя
+    from repository.journal_repository import get_accessible_document_ids
+    accessible_ids = get_accessible_document_ids(current_user["id"]) if current_user else set()
+    unsorted_journals = db.query(Document).filter(Document.folder_id == None, Document.id.in_(accessible_ids)).all()
 
     def build_folder_tree(parent_id=None):
         tree = []
         for folder in [f for f in folders if f.parent_id == parent_id]:
             journals = [
                 {"id": doc.id, "filename": doc.filename}
-                for doc in folder.documents
+                for doc in folder.documents if doc.id in accessible_ids
             ]
             children = build_folder_tree(folder.id)
             tree.append({
@@ -147,6 +188,13 @@ async def create_journal(filename: str = Form(...), folder_id: int = Form(None),
     db.commit()
     journal_id = doc.id
     db.close()
+    # Создаем новый блок для журнала, используя функцию из репозитория
+    create_journal_block(journal_id=journal_id, after_block_id=None, html="", block_type="paragraph")
+    # Назначаем владельца/редактора — создателя
+    try:
+        grant_document_access(journal_id, current_user["id"], can_edit=True, is_owner=True)
+    except Exception:
+        pass
     return RedirectResponse(url=f"/journal/{journal_id}", status_code=303)
 
 class MoveJournalPayload(BaseModel):
@@ -158,6 +206,8 @@ async def move_journal(journal_id: int, payload: MoveJournalPayload, current_use
     Эндпоинт для перемещения журнала в другую папку (или в несортированные).
     folder_id должен передаваться в payload (JSON, через Pydantic).
     """
+    if not user_can_edit_document(current_user["id"], journal_id):
+        raise HTTPException(status_code=403, detail="Нет прав")
     db = SessionLocal()
     doc = db.query(Document).filter(Document.id == journal_id).first()
     if not doc:
@@ -179,6 +229,8 @@ async def api_copy_journal(journal_id: int, payload: CopyJournalPayload, current
     """Создать копию журнала с блоками и тегами.
     Опционально можно задать новое имя и целевую папку.
     """
+    if not user_can_read_document(current_user["id"], journal_id):
+        raise HTTPException(status_code=403, detail="Нет прав")
     try:
         new_doc = copy_journal(journal_id, new_filename=payload.filename, target_folder_id=payload.folder_id)
         return JSONResponse({"status": "ok", "journal": new_doc})
@@ -330,6 +382,8 @@ async def upload_journal_image(
 # --- Delete journal ---
 @router.delete("/api/journals/{journal_id}")
 async def api_delete_journal(journal_id: int, current_user: dict = Depends(get_current_user)):
+    if not user_can_edit_document(current_user["id"], journal_id):
+        raise HTTPException(status_code=403, detail="Нет прав")
     db = SessionLocal()
     try:
         doc = db.query(Document).filter(Document.id == journal_id).first()
@@ -343,8 +397,77 @@ async def api_delete_journal(journal_id: int, current_user: dict = Depends(get_c
 
 @router.get("/search")
 async def search(query: str, current_user: dict = Depends(get_current_user)):
-    results = search_journals(query)
+    # Возвращаем только те журналы, которые доступны пользователю
+    results = search_journals(query, current_user["id"])
     return JSONResponse(results)
+
+# --- Privacy & Access management ---
+class PrivacyPayload(BaseModel):
+    is_private: bool
+
+@router.post("/api/journals/{journal_id}/privacy")
+async def api_set_privacy(journal_id: int, payload: PrivacyPayload, current_user: dict = Depends(get_current_user)):
+    # Только владелец/редактор может менять приватность — упростим: любой с правом редактирования
+    if not user_can_edit_document(current_user["id"], journal_id):
+        raise HTTPException(status_code=403, detail="Нет прав")
+    result = set_document_privacy(journal_id, payload.is_private)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail="Журнал не найден")
+    return JSONResponse(result)
+
+@router.get("/api/journals/{journal_id}/privacy")
+async def api_get_privacy(journal_id: int, current_user: dict = Depends(get_current_user)):
+    if not user_can_read_document(current_user["id"], journal_id):
+        raise HTTPException(status_code=403, detail="Нет прав")
+    from models import SessionLocal, DocumentSettings
+    db = SessionLocal()
+    try:
+        settings = db.query(DocumentSettings).filter(DocumentSettings.document_id == journal_id).first()
+        is_private = bool(settings.is_private) if settings else False
+        return JSONResponse({"document_id": journal_id, "is_private": is_private})
+    finally:
+        db.close()
+
+@router.get("/api/journals/{journal_id}/access")
+async def api_list_access(journal_id: int, current_user: dict = Depends(get_current_user)):
+    if not user_can_edit_document(current_user["id"], journal_id):
+        raise HTTPException(status_code=403, detail="Нет прав")
+    return JSONResponse(list_document_access(journal_id))
+
+class GrantAccessPayload(BaseModel):
+    user_id: str
+    can_edit: bool = False
+    is_owner: bool = False
+
+@router.post("/api/journals/{journal_id}/access")
+async def api_grant_access(journal_id: int, payload: GrantAccessPayload, current_user: dict = Depends(get_current_user)):
+    if not user_can_edit_document(current_user["id"], journal_id):
+        raise HTTPException(status_code=403, detail="Нет прав")
+    return JSONResponse(grant_document_access(journal_id, payload.user_id, payload.can_edit, payload.is_owner))
+
+@router.delete("/api/journals/{journal_id}/access/{user_id}")
+async def api_revoke_access(journal_id: int, user_id: str, current_user: dict = Depends(get_current_user)):
+    if not user_can_edit_document(current_user["id"], journal_id):
+        raise HTTPException(status_code=403, detail="Нет прав")
+    return JSONResponse(revoke_document_access(journal_id, user_id))
+
+# Поиск пользователей по email/username для выдачи доступа
+@router.get("/api/users/search")
+async def api_search_users(q: str, current_user: dict = Depends(get_current_user)):
+    from models import SessionLocal, User
+    db = SessionLocal()
+    try:
+        query = db.query(User)
+        if q:
+            like = f"%{q}%"
+            query = query.filter((User.email.ilike(like)) | (User.username.ilike(like)))
+        users = query.order_by(User.created_at.desc()).limit(20).all()
+        return JSONResponse([
+            {"id": u.id, "email": u.email, "username": u.username}
+            for u in users
+        ])
+    finally:
+        db.close()
 
 @router.post("/journal/{journal_id}/add_tag")
 async def add_tag(journal_id: int, tag: str = Form(...), current_user: dict = Depends(get_current_user)):
@@ -363,6 +486,15 @@ async def get_tags(journal_id: int, current_user: dict = Depends(get_current_use
 
 @router.websocket("/ws/journal/{journal_id}")
 async def ws_endpoint(websocket: WebSocket, journal_id: int, current_user: dict = Depends(get_current_user_for_websocket)):
+    # Проверка доступа на чтение в WS
+    try:
+        if not user_can_read_document(current_user["id"], journal_id):
+            await websocket.close(code=1008)
+            return
+    except Exception:
+        await websocket.close(code=1011)
+        return
+
     uid, name, color = await manager.connect(websocket, journal_id, current_user["email"])
 
     await websocket.send_json({
@@ -383,8 +515,9 @@ async def ws_endpoint(websocket: WebSocket, journal_id: int, current_user: dict 
                 html = data.get("html")
                 table_json = data.get("table")
                 image_url = data.get("image_url")
+                image_width = data.get("image_width")
                 if block_id is not None:
-                    updated = update_journal_block(block_id, html, table_json, image_url)
+                    updated = update_journal_block(block_id, html, table_json, image_url, image_width)
                     if updated:
                         await manager.broadcast(journal_id, {
                             "type": "block_update",

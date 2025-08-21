@@ -7,7 +7,16 @@ from typing import List, Optional, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel
-from models import SubstanceType, SubstanceField, SubstanceUnit, get_db
+from models import (
+    SubstanceType,
+    SubstanceField,
+    SubstanceUnit,
+    SubstanceItem,
+    SubstanceQuantityChange,
+    SubstanceItemComment,
+    SubstanceItemTag,
+    get_db,
+)
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
@@ -148,6 +157,39 @@ def update_type(type_id: str, payload: TypeUpdate, db: Session = Depends(get_db)
         fields=fields,
         units=[{"id": u.id, "name": u.name, "ratio_to_base": u.ratio_to_base, "is_default": u.is_default} for u in units]
     )
+
+@router.delete("/types/{type_id}")
+def delete_type(type_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    type_obj = db.query(SubstanceType).filter(SubstanceType.id == type_id).first()
+    if not type_obj:
+        raise HTTPException(status_code=404, detail="Type not found")
+    # Удаляем зависимые сущности вручную
+    # 1) Единицы измерения
+    db.query(SubstanceUnit).filter(SubstanceUnit.type_id == type_id).delete()
+    # 2) Поля
+    db.query(SubstanceField).filter(SubstanceField.type_id == type_id).delete()
+    # 3) Элементы и их зависимости
+    items = db.query(SubstanceItem).filter(SubstanceItem.type_id == type_id).all()
+    for item in items:
+        db.query(SubstanceQuantityChange).filter(SubstanceQuantityChange.item_id == item.id).delete()
+        db.query(SubstanceItemComment).filter(SubstanceItemComment.item_id == item.id).delete()
+        db.query(SubstanceItemTag).filter(SubstanceItemTag.item_id == item.id).delete()
+        db.delete(item)
+    # 4) Сам тип
+    db.delete(type_obj)
+    db.commit()
+    # аудит: удаление типа
+    write_audit_log(
+        method="DELETE",
+        path=f"/types/{type_id}",
+        user_id=current_user.get("id"),
+        email=current_user.get("email"),
+        action="DELETE_TYPE",
+        entity="substance_type",
+        entity_id=type_id,
+        details={"type_id": type_id},
+    )
+    return {"status": "ok"}
 
 @router.get("/types/{type_id}/fields", response_model=List[FieldOut])
 def get_fields_by_type_id(type_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):

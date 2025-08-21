@@ -84,12 +84,22 @@ document.addEventListener('DOMContentLoaded', () => {
             newTab.innerHTML = `
                 <button class="nav-link d-flex align-items-center justify-content-between" 
                         style="padding:2px 8px; font-size:0.85rem; min-height:24px; height:24px; max-width:160px;"
-                        data-bs-toggle="tab" data-bs-target="#${contentId}" type="button" role="tab" data-url="${url}" onclick="window.location.href='${url}'">
+                        data-bs-toggle="tab" data-bs-target="#${contentId}" type="button" role="tab" data-url="${url}">
                     <span style="font-size:0.85em; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block;">${title}</span>
                     <i class="bi bi-x-lg ms-2" aria-label="Close" style="font-size:0.9em; margin-left:4px; cursor:pointer; padding:0; line-height:1;" 
                         onclick="event.stopPropagation(); document.getElementById('${this.tabsContainer.id}').tabManager.closeTab('${url}')"></i>
                 </button>
             `;
+            // Навигация по клику на вкладке, без inline-обработчика
+            const btn = newTab.querySelector('button.nav-link');
+            btn.addEventListener('click', (e) => {
+                const targetUrl = btn.getAttribute('data-url');
+                if (!targetUrl) return;
+                // Переходим только если это не текущая страница
+                if (targetUrl !== this.currentPageUrl) {
+                    window.location.href = targetUrl;
+                }
+            });
             return newTab;
         }
 
@@ -114,11 +124,23 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const tabElement = this.tabsContainer.querySelector(`button[data-url="${url}"]`);
             if (tabElement) {
-                const previousTabElement = tabElement.parentElement.previousElementSibling;
-                tabElement.parentElement.remove();
-                if (previousTabElement) {
-                    const previousTabUrl = previousTabElement.querySelector('button').getAttribute('data-url');
-                    window.location.href = previousTabUrl;
+                const listItem = tabElement.parentElement;
+                const prevItem = listItem ? listItem.previousElementSibling : null;
+                const nextItem = listItem ? listItem.nextElementSibling : null;
+                const isClosingActive = url === this.currentPageUrl;
+
+                // Удаляем элемент вкладки из DOM
+                if (listItem) listItem.remove();
+
+                if (isClosingActive) {
+                    // Если закрываем активную, переходим на ближайшую (сначала предыдущую, иначе следующую)
+                    const fallbackEl = prevItem || nextItem;
+                    if (fallbackEl) {
+                        const fallbackUrl = fallbackEl.querySelector('button')?.getAttribute('data-url');
+                        if (fallbackUrl && fallbackUrl !== this.currentPageUrl) {
+                            window.location.href = fallbackUrl;
+                        }
+                    }
                 }
             }
             this.activateCurrentTab();

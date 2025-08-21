@@ -2,8 +2,8 @@
 <nav id="sidebar" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse shadow-sm">
     <div class="row g-0">
         <!-- Минималистичный sidebar с иконками -->
-        <div class="col-2 px-0" style="border-right: 1px solid #e5e5e5; background: #f8f9fa;">
-            <div class="d-flex flex-column align-items-center py-3" style="height: 100vh;">
+        <div class="col-2 px-0 sidebar-icons" style="border-right: 1px solid #e5e5e5; background: #f8f9fa;">
+            <div class="d-flex flex-column align-items-center py-3 nav-sidebar" style="height: 100vh;">
                 <a class="mb-3 text-muted" href="#" title="Поиск" data-bs-toggle="modal" data-bs-target="#searchModal">
                     <i class="bi bi-search" style="font-size: 1.3rem;"></i>
                 </a>
@@ -25,15 +25,18 @@
                 <a class="mb-3 text-muted" href="/tasks" title="Задачи" tabindex="-1">
                     <i class="bi bi-list-task" style="font-size: 1.3rem;"></i>
                 </a>
-                <div class="mt-auto">
-                    <a class="text-muted" href="/profile" title="Профиль">
+                <div class="d-flex flex-column align-items-center mt-auto">
+                    <button id="sidebarToggleBtn" class="btn btn-sm btn-outline-secondary mb-3" type="button" title="Свернуть сайдбар" style="border: 0;">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+                    <a class="mb-1 text-muted mt-auto" href="/profile" title="Профиль">
                         <i class="bi bi-person-circle" style="font-size: 1.3rem;"></i>
                     </a>
                 </div>
             </div>
         </div>
         <!-- Минималистичный список папок и журналов -->
-        <div class="col-10 pt-3" style="padding-left: 10px; padding-right: 10px;">
+        <div class="col-10 pt-3 sidebar-content" style="padding-left: 10px; padding-right: 10px;">
             <h6 class="mb-3 text-secondary" style="font-size: 1.1rem; font-weight: 500;">
                 <i class="bi bi-folder2-open me-1"></i>Журналы
             </h6>
@@ -77,6 +80,9 @@
 </nav>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Инициализация сворачивания сайдбара
+    initSidebarCollapse();
+    
     const searchInput = document.getElementById('searchInput');
     const searchButton = document.getElementById('searchButton');
     const foldersList = document.getElementById('folders-list');
@@ -174,6 +180,85 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+// Функция инициализации сворачивания сайдбара
+function initSidebarCollapse() {
+    // Получаем ссылки на основные элементы интерфейса
+    const sidebar = document.getElementById('sidebar');
+    const toggleBtn = document.getElementById('sidebarToggleBtn');
+    const main = document.querySelector('main');
+    
+    // Функция обновления иконки и заголовка кнопки переключения
+    function updateToggleButton(isCollapsed) {
+        if (toggleBtn) {
+            const icon = toggleBtn.querySelector('i');
+            if (isCollapsed) {
+                // Когда сайдбар свёрнут - показываем стрелку вправо
+                icon.className = 'bi bi-chevron-right';
+                toggleBtn.title = 'Развернуть сайдбар';
+            } else {
+                // Когда сайдбар развёрнут - показываем стрелку влево
+                icon.className = 'bi bi-chevron-left';
+                toggleBtn.title = 'Свернуть сайдбар';
+            }
+        }
+    }
+    
+    // Загружаем сохранённое состояние сайдбара из localStorage браузера
+    const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+    if (isCollapsed) {
+        // Если сайдбар был свёрнут, применяем соответствующие стили
+        sidebar.classList.add('collapsed');
+        if (main) {
+            // Убираем Bootstrap классы для узкого контента
+            main.classList.remove('col-md-9', 'col-lg-10', 'ms-sm-auto');
+            // Добавляем классы для полной ширины
+            main.classList.add('col-md-12', 'col-lg-12');
+            // Добавляем отступ слева равный ширине свёрнутого сайдбара (60px)
+            main.style.marginLeft = '40px';
+            main.style.width = 'calc(100% - 40px)';
+        }
+    }
+    // Обновляем внешний вид кнопки в соответствии с текущим состоянием
+    updateToggleButton(isCollapsed);
+    
+    // Назначаем обработчик события клика по кнопке переключения
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+            // Проверяем текущее состояние сайдбара
+            const isCurrentlyCollapsed = sidebar.classList.contains('collapsed');
+            
+            if (isCurrentlyCollapsed) {
+                // Разворачиваем сайдбар
+                sidebar.classList.remove('collapsed');
+                localStorage.setItem('sidebarCollapsed', 'false');
+                if (main) {
+                    // Возвращаем Bootstrap классы для узкого контента
+                    main.classList.remove('col-md-12', 'col-lg-12');
+                    main.classList.add('col-md-9', 'col-lg-10', 'ms-sm-auto');
+                    // Убираем принудительный отступ
+                    main.style.marginLeft = '';
+                    main.style.width = '';
+                }
+                updateToggleButton(false);
+            } else {
+                // Сворачиваем сайдбар
+                sidebar.classList.add('collapsed');
+                localStorage.setItem('sidebarCollapsed', 'true');
+                if (main) {
+                    // Убираем Bootstrap классы для узкого контента
+                    main.classList.remove('col-md-9', 'col-lg-10', 'ms-sm-auto');
+                    // Добавляем классы для полной ширины
+                    main.classList.add('col-md-12', 'col-lg-12');
+                    // Добавляем отступ слева для свёрнутого сайдбара
+                    main.style.marginLeft = '40px';
+                    main.style.width = 'calc(100% - 40px)';
+                }
+                updateToggleButton(true);
+            }
+        });
+    }
+}
 </script>
 <!-- Модальное окно для создания журнала -->
 <div class="modal fade" id="createJournalModal" tabindex="-1" aria-labelledby="createJournalModalLabel" aria-hidden="true">
@@ -481,6 +566,17 @@ document.getElementById('createFolderModalForm').addEventListener('submit', asyn
 .journal-minimal:hover {
     background: #f8f9fa;
 }
+.journal-minimal.active {
+    background: #e9f5ff;
+    box-shadow: inset 3px 0 0 #0d6efd;
+}
+.journal-minimal.active .bi-journal-text {
+    color: #0d6efd;
+}
+.journal-minimal.active .journal-link {
+    color: #0d6efd;
+    font-weight: 600;
+}
 .journal-minimal .bi-journal-text {
     font-size: 1em;
     margin-right: 5px;
@@ -585,6 +681,20 @@ document.getElementById('createFolderModalForm').addEventListener('submit', asyn
     outline: 2px dashed #007bff !important;
     background: #e9f5ff !important;
 }
+
+/* Стили для сворачивания сайдбара */
+#sidebar.collapsed {
+    width: 2.77%
+}
+
+#sidebar.collapsed .sidebar-icons {
+    width: 100%
+}
+
+#sidebar.collapsed .sidebar-content {
+    display: none;
+    z-index: -1;
+}
 </style>
 <script>
 function escapeHtml(text) {
@@ -612,9 +722,12 @@ function collectAllFolders(tree, arr = [], level = 0) {
 function renderJournals(journals, collapsed, allFolders, currentFolderId) {
     if (!journals || journals.length === 0 || collapsed) return '';
     let html = '';
+    const currentMatch = window.location.pathname.match(/\/journal\/(\d+)/);
+    const currentId = currentMatch ? String(currentMatch[1]) : null;
     for (const journal of journals) {
+        const isActive = currentId && String(journal.id) === currentId;
         html += `
-            <div class="journal-minimal journal-draggable" data-journal-id="${journal.id}" draggable="true">
+            <div class="journal-minimal journal-draggable${isActive ? ' active' : ''}" data-journal-id="${journal.id}" draggable="true">
                 <i class="bi bi-journal-text"></i>
                 <a href="/journal/${journal.id}" class="journal-link">${escapeHtml(journal.filename)}</a>
                 <div class="journal-actions-dropdown">

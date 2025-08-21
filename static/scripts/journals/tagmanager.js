@@ -6,6 +6,13 @@ class TagManager {
         this.container = document.getElementById(containerId);
         this.input = document.getElementById(inputId);
         this.addBtn = document.getElementById(addBtnId);
+        // Извлекаем id журнала из URL: /journal/{id}
+        this.journalId = (() => {
+            try {
+                const m = window.location.pathname.match(/\/journal\/(\d+)/);
+                return m ? m[1] : null;
+            } catch (_) { return null; }
+        })();
 
         if (this.addBtn) {
             this.addBtn.addEventListener("click", () => this.addTag());
@@ -49,12 +56,42 @@ class TagManager {
         });
     }
 
-    addTag() {
-        const tag = this.input.value.trim();
+    async addTag() {
+        const tag = (this.input && this.input.value ? this.input.value : "").trim();
         if (tag) {
-            this.ws.send(JSON.stringify({ type: "add_tag", tag: tag }));
-            this.input.value = "";
+            await this._sendAddTag(tag);
+            if (this.input) this.input.value = "";
         }
+    }
+
+    // Программное добавление тега по имени (для выбора из списка)
+    async addTagByName(tagName) {
+        const tag = String(tagName || "").trim();
+        if (!tag) return;
+        await this._sendAddTag(tag);
+        if (this.input) this.input.value = "";
+    }
+
+    async _sendAddTag(tag) {
+        try {
+            // Если WS открыт — используем его (старое поведение)
+            if (this.ws && this.ws.readyState === 1) {
+                this.ws.send(JSON.stringify({ type: "add_tag", tag }));
+                return;
+            }
+            // Fallback: REST API, если WS недоступен
+            if (!this.journalId) return;
+            const form = new FormData();
+            form.append('tag', tag);
+            const res = await fetch(`/journal/${encodeURIComponent(this.journalId)}/add_tag`, { method: 'POST', body: form });
+            if (res.ok) {
+                // Обновим список тегов вручную
+                try {
+                    const data = await fetch(`/journal/${encodeURIComponent(this.journalId)}/tags`).then(r => r.ok ? r.json() : null);
+                    if (data && Array.isArray(data.tags)) this.renderTags(data.tags);
+                } catch (_) {}
+            }
+        } catch (_) {}
     }
 
     removeTag(tag) {

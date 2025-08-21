@@ -290,6 +290,45 @@ class BlockEditorManager {
         div.appendChild(handle);
         div.appendChild(content);
 
+        // Кнопка "+ текст" только для не-текстовых блоков
+        if (type !== 'paragraph') {
+            try {
+                const actions = document.createElement('div');
+                actions.className = 'block-actions';
+                actions.style.marginTop = '6px';
+                actions.style.userSelect = 'none';
+                actions.style.pointerEvents = 'auto';
+
+                const addTextBtn = document.createElement('button');
+                addTextBtn.type = 'button';
+                addTextBtn.className = 'add-text-btn';
+                addTextBtn.innerHTML = '<i class="bi bi-plus-lg"></i>';
+                addTextBtn.title = 'Добавить текст ниже';
+                addTextBtn.setAttribute('contenteditable', 'false');
+                addTextBtn.addEventListener('mousedown', (e) => e.preventDefault());
+                addTextBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Создаём новый текстовый блок сразу после текущего
+                    const newTempId = this._createBlockElement(null, 'paragraph', '<p><br/></p>');
+                    const newEl = this.container.querySelector(`[data-block-id="${newTempId}"]`);
+                    if (newEl) {
+                        this.container.insertBefore(newEl, div.nextSibling);
+                        setTimeout(() => {
+                            const cont = newEl.querySelector('.block-content');
+                            if (cont) cont.focus();
+                        }, 0);
+                    }
+                    if (typeof this.onBlockCreate === 'function') {
+                        const afterRealId = div.getAttribute('data-block-id');
+                        this.onBlockCreate(afterRealId, newTempId);
+                    }
+                });
+                actions.appendChild(addTextBtn);
+                div.appendChild(actions);
+            } catch (_) {}
+        }
+
         // Событие ввода: уведомляем менеджер WS
         // Shift+Enter – создать новый блок ниже (обычный Enter делает перенос строки)
         content.addEventListener("keydown", (e) => {
@@ -436,6 +475,31 @@ class BlockEditorManager {
             delBtn.textContent = 'Удалить';
             delBtn.className = 'btn btn-sm btn-outline-danger';
 
+            // Слайдер размера
+            const sizeWrap = document.createElement('div');
+            sizeWrap.style.display = 'flex';
+            sizeWrap.style.alignItems = 'center';
+            sizeWrap.style.gap = '6px';
+            const sizeLabel = document.createElement('span');
+            sizeLabel.className = 'badge bg-light text-dark';
+            sizeLabel.style.fontWeight = '500';
+            const sizeInput = document.createElement('input');
+            sizeInput.type = 'range';
+            sizeInput.min = '5';
+            sizeInput.max = '100';
+            sizeInput.step = '5';
+            sizeInput.style.width = '140px';
+
+            // Текущая ширина из img style width:%
+            const imgEl = content.querySelector('img');
+            const currentWidth = (() => {
+                if (!imgEl) return 100;
+                const m = (imgEl.getAttribute('style') || '').match(/width:\s*(\d+)%/);
+                return m ? parseInt(m[1], 10) : 100;
+            })();
+            sizeInput.value = String(currentWidth);
+            sizeLabel.textContent = `${currentWidth}%`;
+
             const fileInput = document.createElement('input');
             fileInput.type = 'file';
             fileInput.accept = 'image/*';
@@ -445,6 +509,11 @@ class BlockEditorManager {
             actions.appendChild(delBtn);
             content.appendChild(actions);
             content.appendChild(fileInput);
+
+            // Панель размера под actions
+            sizeWrap.appendChild(sizeLabel);
+            sizeWrap.appendChild(sizeInput);
+            actions.appendChild(sizeWrap);
 
             // Поменять фото: загрузим в бекэнд и отправим image_url через WS
             changeBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
@@ -484,6 +553,22 @@ class BlockEditorManager {
                     this.onBlockDelete(blockId);
                 }
                 wrapper.remove();
+            });
+
+            // Обработка изменения размера
+            sizeInput.addEventListener('input', () => {
+                const val = parseInt(sizeInput.value, 10);
+                sizeLabel.textContent = `${val}%`;
+                const img = content.querySelector('img');
+                if (img) {
+                    img.style.width = `${val}%`;
+                }
+            });
+            sizeInput.addEventListener('change', () => {
+                const val = parseInt(sizeInput.value, 10);
+                if (typeof window.wsBlocks?.sendBlockUpdate === 'function') {
+                    window.wsBlocks.sendBlockUpdate(blockId, { image_width: val });
+                }
             });
         } catch (_) {}
     }

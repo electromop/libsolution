@@ -534,7 +534,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       reason: reason
     };
     try {
-      const resp = await fetch(`${getApiBaseUrl()}/quantity_change/`, {
+      const resp = await fetch(`/quantity_change/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

@@ -145,6 +145,8 @@ class TypeManager {
       await window.filtersManager.setType(typeObj.id);
     }
     this.renderItemForm(typeObj);
+    // Кнопка удаления типа
+    ensureDeleteTypeButton(typeObj, this);
   }
 
   /**
@@ -997,4 +999,38 @@ class ModalManager {
       if (nameInput) nameInput.focus();
     } catch (_) {}
   }
+}
+
+// Добавляет кнопку удаления типа в блок действий, если её нет
+function ensureDeleteTypeButton(typeObj, typeManagerInstance) {
+  try {
+    const actions = document.getElementById('typeActions');
+    if (!actions) return;
+    let btn = actions.querySelector('[data-role="delete-type"]');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-outline-danger';
+      btn.setAttribute('data-role', 'delete-type');
+      btn.title = 'Удалить тип';
+      btn.innerHTML = '<i class="bi bi-trash"></i> Удалить тип';
+      actions.appendChild(btn);
+    }
+    btn.onclick = async () => {
+      if (!confirm('Удалить тип и все связанные вещества? Действие необратимо.')) return;
+      try {
+        const res = await fetch(`/types/${typeObj.id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          alert('Ошибка удаления типа');
+          return;
+        }
+        await typeManagerInstance.fetchTypes();
+        typeManagerInstance.currentType = null;
+        typeManagerInstance.renderTypeList();
+        typeManagerInstance.clearCurrentTypeView();
+      } catch (_) {
+        alert('Ошибка удаления типа');
+      }
+    };
+  } catch (_) {}
 }

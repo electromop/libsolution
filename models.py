@@ -9,7 +9,8 @@ import uuid
 import os
 
 # ВАЖНО: Добавляем параметр sslmode='disable' для устранения ошибки SSL connection has been closed unexpectedly
-SQLALCHEMY_DATABASE_URL = os.getenv("DB_URL")
+# SQLALCHEMY_DATABASE_URL = os.getenv("DB_URL")
+SQLALCHEMY_DATABASE_URL = "postgresql://gen_user:1^GDoFswOw0=).@77.232.135.76:5432/Libsolution_beta"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
@@ -65,6 +66,22 @@ class Document(Base):
         back_populates="document",
         cascade="all, delete-orphan",
     )
+
+
+class DocumentSettings(Base):
+    __tablename__ = "document_settings"
+    # Одна запись на документ
+    document_id = Column(Integer, ForeignKey("document.id"), primary_key=True)
+    is_private = Column(Boolean, default=False, nullable=False)
+
+
+class DocumentAccess(Base):
+    __tablename__ = "document_access"
+    id = Column(String, primary_key=True)  # UUID как строка
+    document_id = Column(Integer, ForeignKey("document.id"), nullable=False)
+    user_id = Column(String, ForeignKey("user.id"), nullable=False)
+    can_edit = Column(Boolean, default=False, nullable=False)
+    is_owner = Column(Boolean, default=False, nullable=False)
 
 class DocumentBlock(Base):
     __tablename__ = "document_block"
