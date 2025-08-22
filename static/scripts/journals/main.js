@@ -65,13 +65,43 @@ document.addEventListener("DOMContentLoaded", () => {
     // Первичная инициализация на всякий случай
     initLazyImages(document);
 
+    // Вешаем обработчики для открытия редактирования меток таймлайна по клику
+    function attachTimelineMarkerHandlers(root) {
+        try {
+            const markers = (root || document).querySelectorAll('.timeline-marker');
+            markers.forEach(marker => {
+                if (marker.dataset.tlinit === '1') return;
+                marker.dataset.tlinit = '1';
+                marker.style.cursor = 'pointer';
+                marker.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const block = marker.closest('.editor-block');
+                    const blockId = block && block.getAttribute('data-block-id');
+                    if (blockId && window.timelineManager && typeof window.timelineManager._openDateTimePicker === 'function') {
+                        window.timelineManager._openDateTimePicker({ blockId, marker });
+                    }
+                });
+            });
+        } catch (_) {}
+    }
+
     // Перехват методов рендера для повторной инициализации наблюдателя
     const _origRenderBlocks = blockEditor.renderBlocks.bind(blockEditor);
-    blockEditor.renderBlocks = (blocks) => { _origRenderBlocks(blocks); initLazyImages(blockEditor.container); };
+    blockEditor.renderBlocks = (blocks) => { _origRenderBlocks(blocks); initLazyImages(blockEditor.container); attachTimelineMarkerHandlers(blockEditor.container); };
     const _origAddBlocks = blockEditor.addBlocks.bind(blockEditor);
-    blockEditor.addBlocks = (blocks) => { _origAddBlocks(blocks); initLazyImages(blockEditor.container); };
+    blockEditor.addBlocks = (blocks) => { _origAddBlocks(blocks); initLazyImages(blockEditor.container); attachTimelineMarkerHandlers(blockEditor.container); };
     const _origUpdateBlock = blockEditor.updateBlock.bind(blockEditor);
-    blockEditor.updateBlock = (id, html, table) => { _origUpdateBlock(id, html, table); initLazyImages(blockEditor.container); };
+    blockEditor.updateBlock = (id, html, table) => {
+        _origUpdateBlock(id, html, table);
+        initLazyImages(blockEditor.container);
+        // При любом обновлении блока — отключаем редактирование текста меток в нём
+        try { makeMarkerTextNonEditable(blockEditor.container.querySelector(`[data-block-id="${id}"]`)); } catch (_) {}
+        // И навесим обработчики клика на метки
+        try { attachTimelineMarkerHandlers(blockEditor.container.querySelector(`[data-block-id="${id}"]`)); } catch (_) {}
+        // И обновляем панель таймлайна, если есть
+        if (window.timelineManager) window.timelineManager.renderFromEditor(blockEditor.container);
+    };
 
     // Экспорт функции создания таблицы для тулбара
     window.createTableBlock = function(rows = 10, cols = 5) {
@@ -172,12 +202,23 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     // Экспорт функции добавления временной метки
+    function makeMarkerTextNonEditable(root) {
+        try {
+            const markers = (root || document).querySelectorAll('.timeline-marker .tm-text');
+            markers.forEach(el => {
+                el.contentEditable = 'false';
+                el.style.userSelect = 'none';
+                el.style.caretColor = 'transparent';
+            });
+        } catch (_) {}
+    }
+
     window.addTimelineMarker = function() {
         const now = new Date();
         const pad = (n) => String(n).padStart(2, '0');
         const label = `${pad(now.getHours())}:${pad(now.getMinutes())} ${pad(now.getDate())}.${pad(now.getMonth()+1)}.${now.getFullYear()}`;
         const ts = now.toISOString();
-        const html = `<div class="timeline-marker" data-ts="${ts}"><span class="tm-dot">●</span><span class="tm-text">${label}</span></div>`;
+        const html = `<div class="timeline-marker" data-ts="${ts}"><span class="tm-dot">●</span><span class="tm-text" contenteditable="false" style="user-select:none; caret-color:transparent;">${label}</span></div>`;
 
         // Вставляем блок-метку после текущего последнего блока
         const blocks = Array.from(blockEditor.container.querySelectorAll('.editor-block'));
@@ -186,6 +227,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const tempId = blockEditor._createBlockElement(null, 'marker', html);
         const newEl = blockEditor.container.querySelector(`[data-block-id="${tempId}"]`);
         if (newEl) newEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Сразу запретим редактирование текста метки
+        makeMarkerTextNonEditable(newEl);
+        // И навесим обработчик клика для открытия плашки
+        attachTimelineMarkerHandlers(newEl);
         if (window.timelineManager) window.timelineManager.renderFromEditor(blockEditor.container);
 
         wsManager.sendBlockCreate(afterId || "", tempId, {
@@ -198,6 +243,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const paraEl = blockEditor.container.querySelector(`[data-block-id="${paraId}"] .block-content`);
         if (paraEl) paraEl.focus();
     }
+
+    // Применяем нередактируемость для существующих меток после первичного рендера
+    makeMarkerTextNonEditable(blockEditor.container);
+    attachTimelineMarkerHandlers(blockEditor.container);
 
     // Глобальные действия для таблиц (в вызовах из тулбара)
     function getActiveExcel() {

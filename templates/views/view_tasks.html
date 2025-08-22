@@ -79,7 +79,6 @@
     </form>
   </div>
 </div>
-
 <script>
 const API_BASE = "/import/items/";
 const TYPES_API = "/types/";
@@ -193,7 +192,7 @@ function getTypeById(id) {
 function getCsvExampleForType(type) {
   if (!type) return "Выберите тип вещества, чтобы увидеть пример формата CSV.";
   // Всегда есть колонка name, далее - поля типа
-  let columns = ["name"];
+  let columns = ["Название"];
   let exampleRow = ["Вещество 1"];
   if (type.fields && type.fields.length) {
     type.fields.forEach(f => {

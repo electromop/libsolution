@@ -92,6 +92,40 @@ class TimelineManager {
     const input = document.createElement('input');
     input.type = 'datetime-local';
     input.style.marginRight = '8px';
+    // Запрет редактирования с клавиатуры, но оставляем возможность открыть нативный пикер
+    input.readOnly = false;
+    input.style.caretColor = 'transparent';
+    input.setAttribute('inputmode', 'none');
+    input.addEventListener('keydown', (e) => e.preventDefault());
+    input.addEventListener('beforeinput', (e) => e.preventDefault());
+    input.addEventListener('paste', (e) => e.preventDefault());
+    // При клике — открываем пикер, если поддерживается
+    input.addEventListener('mousedown', (e) => {
+      if (typeof input.showPicker === 'function') {
+        e.preventDefault();
+        input.showPicker();
+      }
+    });
+    input.addEventListener('click', () => {
+      if (typeof input.showPicker === 'function') {
+        try { input.showPicker(); } catch (_) {}
+      }
+    });
+
+    // Кнопка для явного открытия пикера (универсальный триггер)
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'btn btn-sm btn-outline-secondary me-2';
+    openBtn.title = 'Выбрать дату и время';
+    openBtn.innerHTML = '<i class="bi bi-calendar-event"></i>';
+    openBtn.onclick = (e) => {
+      e.preventDefault();
+      if (typeof input.showPicker === 'function') {
+        try { input.showPicker(); return; } catch (_) {}
+      }
+      // Фолбэк: сфокусируем поле и кликнем по нему
+      try { input.focus(); input.click(); } catch (_) {}
+    };
     // Заполнить текущее значение
     const currentIso = marker.getAttribute('data-ts');
     if (currentIso) {
@@ -138,6 +172,7 @@ class TimelineManager {
       this.renderFromEditor(block.closest('#editor') || document.getElementById('editor'));
     };
 
+    popup.appendChild(openBtn);
     popup.appendChild(input);
     popup.appendChild(save);
     popup.appendChild(cancel);

@@ -507,6 +507,17 @@
             dateInput.style.left = '-9999px';
             document.body.appendChild(dateInput);
             console.log('дата')
+            // Откроем нативный пикер даты
+            try {
+                if (typeof dateInput.showPicker === 'function') {
+                    dateInput.showPicker();
+                } else {
+                    dateInput.focus();
+                    dateInput.click();
+                }
+            } catch (e) {
+                try { dateInput.focus(); dateInput.click(); } catch (_) {}
+            }
             // Когда пользователь выберет дату
             dateInput.onchange = function() {
                 const value = dateInput.value;
