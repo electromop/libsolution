@@ -171,7 +171,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Date конструктор интерпретирует ISO-строку как UTC
     const d = new Date(dt);
     if (isNaN(d)) return dt;
-    return d.toLocaleString('ru-RU');
+    return d.toLocaleDateString('ru-RU');
   }
 
   // Для дат только с датой (без времени)

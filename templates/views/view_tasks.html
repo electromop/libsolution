@@ -83,7 +83,7 @@
 const API_BASE = "/import/items/";
 const TYPES_API = "/types/";
 
-// Функция для преобразования ISO строки UTC в локальное время пользователя
+// Функция для преобразования ISO строки UTC в локальную дату пользователя (без времени)
 function formatDate(dt) {
   if (!dt) return "";
   // Преобразуем строку в объект Date, учитывая, что dt в формате UTC (например, "2024-06-09T13:00:00.000000Z")
@@ -93,8 +93,8 @@ function formatDate(dt) {
     iso += "Z";
   }
   const d = new Date(iso);
-  // toLocaleString автоматически покажет в локальном времени пользователя
-  return d.toLocaleString("ru-RU");
+  // Показываем только дату в локали пользователя
+  return d.toLocaleDateString("ru-RU");
 }
 
 function statusBadge(status) {

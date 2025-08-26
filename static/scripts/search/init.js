@@ -202,7 +202,7 @@ document.addEventListener('DOMContentLoaded', function() {
             items.forEach(item => {
                 const name = item.name ? highlight(item.name, query) : '<span class="text-muted">Без названия</span>';
                 const type = item.type_id ? `<span class="badge bg-secondary ms-2"></span>` : '';
-                const created = item.created_at ? `<span class="text-muted ms-2" title="Создано">${new Date(item.created_at).toLocaleString('ru-RU')}</span>` : '';
+                const created = item.created_at ? `<span class="text-muted ms-2" title="Создано">${new Date(item.created_at).toLocaleDateString('ru-RU')}</span>` : '';
                 let dataFields = '';
                 if (item.data && typeof item.data === 'object') {
                     const keys = Object.keys(item.data).slice(0, 3);

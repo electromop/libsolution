@@ -311,7 +311,7 @@ class TypeManager {
                     commentsBox.removeAttribute('data-loading');
                     commentsBox.innerHTML = last3.map(c => {
                       const dt = new Date(c.created_at);
-                      const dateStr = isNaN(dt) ? '' : dt.toLocaleString();
+                      const dateStr = isNaN(dt) ? '' : dt.toLocaleDateString('ru-RU');
                       const author = c.user && (c.user.username || c.user.email) ? ` — ${c.user.username || c.user.email}` : '';
                       return `<div class="mb-1">${c.text}<span class="text-muted">${author} ${dateStr ? '('+dateStr+')' : ''}</span></div>`;
                     }).join('');

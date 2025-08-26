@@ -465,6 +465,10 @@ class BlockEditorManager {
             actions.style.display = 'flex';
             actions.style.gap = '6px';
             actions.style.zIndex = '2';
+            // Скрываем панель действий по умолчанию, показываем по hover
+            actions.style.opacity = '0';
+            actions.style.pointerEvents = 'none';
+            actions.style.transition = 'opacity .12s ease';
 
             const changeBtn = document.createElement('button');
             changeBtn.type = 'button';
@@ -475,30 +479,7 @@ class BlockEditorManager {
             delBtn.textContent = 'Удалить';
             delBtn.className = 'btn btn-sm btn-outline-danger';
 
-            // Слайдер размера
-            const sizeWrap = document.createElement('div');
-            sizeWrap.style.display = 'flex';
-            sizeWrap.style.alignItems = 'center';
-            sizeWrap.style.gap = '6px';
-            const sizeLabel = document.createElement('span');
-            sizeLabel.className = 'badge bg-light text-dark';
-            sizeLabel.style.fontWeight = '500';
-            const sizeInput = document.createElement('input');
-            sizeInput.type = 'range';
-            sizeInput.min = '5';
-            sizeInput.max = '100';
-            sizeInput.step = '5';
-            sizeInput.style.width = '140px';
-
-            // Текущая ширина из img style width:%
-            const imgEl = content.querySelector('img');
-            const currentWidth = (() => {
-                if (!imgEl) return 100;
-                const m = (imgEl.getAttribute('style') || '').match(/width:\s*(\d+)%/);
-                return m ? parseInt(m[1], 10) : 100;
-            })();
-            sizeInput.value = String(currentWidth);
-            sizeLabel.textContent = `${currentWidth}%`;
+            // Убрали слайдер изменения размера (0-100%)
 
             const fileInput = document.createElement('input');
             fileInput.type = 'file';
@@ -509,11 +490,33 @@ class BlockEditorManager {
             actions.appendChild(delBtn);
             content.appendChild(actions);
             content.appendChild(fileInput);
+            // Показывать действия только при наведении на блок изображения, со сглаживанием скрытия
+            let hideTimer = null;
+            const doShow = () => {
+                if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+                actions.style.opacity = '1';
+                actions.style.pointerEvents = 'auto';
+            };
+            const doHide = () => {
+                actions.style.opacity = '0';
+                actions.style.pointerEvents = 'none';
+            };
+            const scheduleHide = () => {
+                if (hideTimer) clearTimeout(hideTimer);
+                hideTimer = setTimeout(doHide, 200);
+            };
+            // Наведение на весь блок
+            wrapper.addEventListener('mouseenter', doShow);
+            wrapper.addEventListener('mouseleave', (e) => {
+                // Если уходим на сами actions — не скрываем немедленно
+                if (e && actions.contains(e.relatedTarget)) return;
+                scheduleHide();
+            });
+            // Наведение на панель действий
+            actions.addEventListener('mouseenter', doShow);
+            actions.addEventListener('mouseleave', scheduleHide);
 
-            // Панель размера под actions
-            sizeWrap.appendChild(sizeLabel);
-            sizeWrap.appendChild(sizeInput);
-            actions.appendChild(sizeWrap);
+            // Панель размера удалена
 
             // Поменять фото: загрузим в бекэнд и отправим image_url через WS
             changeBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
@@ -555,21 +558,116 @@ class BlockEditorManager {
                 wrapper.remove();
             });
 
-            // Обработка изменения размера
-            sizeInput.addEventListener('input', () => {
-                const val = parseInt(sizeInput.value, 10);
-                sizeLabel.textContent = `${val}%`;
+            // Управление размером по слайдеру отключено
+
+            // --- Боковые ручки для изменения ширины ---
+            const leftHandle = document.createElement('div');
+            const rightHandle = document.createElement('div');
+            const baseHandleStyle = {
+                position: 'absolute',
+                top: '50%',
+                width: '6px',
+                height: '28px',
+                background: '#3b82f6',
+                borderRadius: '3px',
+                transform: 'translateY(-50%)',
+                cursor: 'ew-resize',
+                opacity: '0',
+                transition: 'opacity .12s ease',
+                zIndex: '2'
+            };
+            const applyStyle = (el, styleObj) => { for (const k in styleObj) el.style[k] = styleObj[k]; };
+            applyStyle(leftHandle, baseHandleStyle);
+            applyStyle(rightHandle, baseHandleStyle);
+            // Привязываем ручки к фактическим краям изображения и обновляем при любом изменении
+            const imgEl = () => content.querySelector('img');
+            const positionHandles = () => {
+                const img = imgEl();
+                if (!img) return;
+                const rect = content.getBoundingClientRect();
+                const imgRect = img.getBoundingClientRect();
+                // Координаты относительно content
+                const left = Math.max(8, imgRect.left - rect.left + 2);
+                const right = Math.max(8, rect.right - imgRect.right + 2);
+                leftHandle.style.left = `${left}px`;
+                rightHandle.style.right = `${right}px`;
+                // Вертикальное центрирование по текущей высоте картинки
+                const mid = imgRect.top - rect.top + imgRect.height / 2;
+                leftHandle.style.top = `${mid}px`;
+                rightHandle.style.top = `${mid}px`;
+            };
+            // Инициализация
+            positionHandles();
+
+            content.appendChild(leftHandle);
+            content.appendChild(rightHandle);
+
+            let hideTimerHandles = null;
+            const showHandles = () => {
+                if (hideTimerHandles) { clearTimeout(hideTimerHandles); hideTimerHandles = null; }
+                leftHandle.style.opacity = '1';
+                rightHandle.style.opacity = '1';
+            };
+            const scheduleHideHandles = () => {
+                if (hideTimerHandles) clearTimeout(hideTimerHandles);
+                hideTimerHandles = setTimeout(() => {
+                    leftHandle.style.opacity = '0';
+                    rightHandle.style.opacity = '0';
+                }, 200);
+            };
+            wrapper.addEventListener('mouseenter', () => { positionHandles(); showHandles(); });
+            wrapper.addEventListener('mouseleave', scheduleHideHandles);
+            leftHandle.addEventListener('mouseenter', showHandles);
+            rightHandle.addEventListener('mouseenter', showHandles);
+            leftHandle.addEventListener('mouseleave', scheduleHideHandles);
+            rightHandle.addEventListener('mouseleave', scheduleHideHandles);
+
+            const startDrag = (e, side) => {
+                e.preventDefault();
+                e.stopPropagation();
                 const img = content.querySelector('img');
-                if (img) {
-                    img.style.width = `${val}%`;
-                }
-            });
-            sizeInput.addEventListener('change', () => {
-                const val = parseInt(sizeInput.value, 10);
-                if (typeof window.wsBlocks?.sendBlockUpdate === 'function') {
-                    window.wsBlocks.sendBlockUpdate(blockId, { image_width: val });
-                }
-            });
+                if (!img) return;
+                const rect = content.getBoundingClientRect();
+                const startX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+                const startWidthPct = (() => {
+                    const m = (img.getAttribute('style') || '').match(/width:\s*(\d+)%/);
+                    return m ? parseInt(m[1], 10) : Math.round((img.clientWidth / rect.width) * 100);
+                })();
+                const onMove = (ev) => {
+                    const clientX = (ev.touches && ev.touches[0]) ? ev.touches[0].clientX : ev.clientX;
+                    if (typeof clientX !== 'number') return;
+                    const dx = clientX - startX;
+                    const deltaPct = (dx / rect.width) * 100 * (side === 'left' ? -1 : 1);
+                    let next = Math.max(5, Math.min(100, Math.round(startWidthPct + deltaPct)));
+                    img.style.width = `${next}%`;
+                    positionHandles();
+                };
+                const endDrag = () => {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', endDrag);
+                    document.removeEventListener('touchmove', onMove);
+                    document.removeEventListener('touchend', endDrag);
+                    const m = (img.getAttribute('style') || '').match(/width:\s*(\d+)%/);
+                    const val = m ? parseInt(m[1], 10) : Math.round((img.clientWidth / rect.width) * 100);
+                    if (typeof window.wsBlocks?.sendBlockUpdate === 'function') {
+                        window.wsBlocks.sendBlockUpdate(blockId, { image_width: val });
+                    }
+                    // Финальная фиксация позиции ручек
+                    positionHandles();
+                };
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', endDrag);
+                document.addEventListener('touchmove', onMove, { passive: false });
+                document.addEventListener('touchend', endDrag);
+            };
+            // Перепозиционировать ручки при любых внешних изменениях размера/шрифта/окна
+            const ro = new ResizeObserver(positionHandles);
+            try { ro.observe(content); } catch(_) {}
+            window.addEventListener('resize', positionHandles);
+            leftHandle.addEventListener('mousedown', (e) => startDrag(e, 'left'));
+            rightHandle.addEventListener('mousedown', (e) => startDrag(e, 'right'));
+            leftHandle.addEventListener('touchstart', (e) => startDrag(e, 'left'));
+            rightHandle.addEventListener('touchstart', (e) => startDrag(e, 'right'));
         } catch (_) {}
     }
 

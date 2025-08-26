@@ -15,7 +15,7 @@ from repository.journal_repository import (
     set_document_privacy, list_document_access, grant_document_access, revoke_document_access,
     user_can_read_document, user_can_edit_document
 )
-from models import SessionLocal, Document, Folder, Tag
+from models import SessionLocal, Document, Folder, Tag, DocumentSettings, DocumentAccess
 from auth import get_current_user, get_current_user_for_websocket
 from connection_manager import manager
 import os
@@ -206,8 +206,6 @@ async def move_journal(journal_id: int, payload: MoveJournalPayload, current_use
     Эндпоинт для перемещения журнала в другую папку (или в несортированные).
     folder_id должен передаваться в payload (JSON, через Pydantic).
     """
-    if not user_can_edit_document(current_user["id"], journal_id):
-        raise HTTPException(status_code=403, detail="Нет прав")
     db = SessionLocal()
     doc = db.query(Document).filter(Document.id == journal_id).first()
     if not doc:
@@ -382,13 +380,17 @@ async def upload_journal_image(
 # --- Delete journal ---
 @router.delete("/api/journals/{journal_id}")
 async def api_delete_journal(journal_id: int, current_user: dict = Depends(get_current_user)):
-    if not user_can_edit_document(current_user["id"], journal_id):
-        raise HTTPException(status_code=403, detail="Нет прав")
+    # if not user_can_edit_document(current_user["id"], journal_id):
+    #     raise HTTPException(status_code=403, detail="Нет прав")
     db = SessionLocal()
     try:
+        # Удаляем все связанные записи, кроме пользователя
+        db.query(DocumentSettings).filter(DocumentSettings.document_id == journal_id).delete()
+        db.query(DocumentAccess).filter(DocumentAccess.document_id == journal_id).delete()
         doc = db.query(Document).filter(Document.id == journal_id).first()
         if not doc:
             return JSONResponse({"status": "error", "message": "Журнал не найден"}, status_code=404)
+        
         db.delete(doc)
         db.commit()
         return JSONResponse({"status": "ok", "deleted": journal_id})

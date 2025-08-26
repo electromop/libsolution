@@ -178,7 +178,7 @@ def get_journal_blocks(journal_id: int):
             html = ""  # таблица строится на фронте из JSON
         elif block.block_type == "image":
             image_url = data.get("image_url")
-            image_width = data.get("image_width") or 100
+            image_width = data.get("image_width") or 10
             if image_url:
                 html = (
                     "<div class='journal-image-block loading'>"
@@ -220,11 +220,13 @@ def get_journal_blocks_after(journal_id: int, after_position: int):
             html = ""
         elif block.block_type == "image":
             image_url = data.get("image_url")
+            image_width = data.get("image_width") or 100
+            print(f"image_width: {image_width}")
             if image_url:
                 html = (
                     "<div class='journal-image-block loading'>"
                     "<div class='journal-image-spinner'></div>"
-                    f"<img class='journal-image lazy-image' data-src='{image_url}' alt='' loading='lazy' style='max-width:100%; border-radius:16px; opacity:0;'/>"
+                    f"<img class='journal-image lazy-image' data-src='{image_url}' alt='' loading='lazy' style='max-width:100%; width:{int(image_width)}%; border-radius:16px; opacity:0;'/>"
                     "</div>"
                 )
         result.append({

@@ -39,7 +39,8 @@
         justify-content: center;
         align-items: center;
         background: #fff;
-        overflow: auto;
+        overflow-y: auto;
+        overflow-x: hidden;
       }
       .button-container {
         display: flex;
@@ -106,7 +107,7 @@
   
       <input type="file" id="imageUpload" accept="image/*">
       <div id="canvas-container">
-        <div class="canvas-container" style="width: 300px; height: 150px; position: relative; user-select: none;"><canvas id="canvas" class="lower-canvas" width="539.9999856948853" height="269.9999928474426" style="position: absolute; width: 300px; height: 150px; left: 0px; top: 0px; touch-action: none; user-select: none;"></canvas><canvas class="upper-canvas " width="539.9999856948853" height="269.9999928474426" style="position: absolute; width: 300px; height: 150px; left: 0px; top: 0px; touch-action: none; user-select: none; cursor: default;"></canvas></div>
+        <canvas id="canvas"></canvas>
       </div>
   
       <div class="button-container">
@@ -129,20 +130,41 @@
       return { width: maxWidth, height: maxHeight };
     }
   
-    let canvas = new fabric.Canvas('canvas');
-    canvas.isDrawingMode = true;
+    let canvas = new fabric.Canvas('canvas', { selection: true, preserveObjectStacking: true });
+    // По умолчанию режим перемещения/выделения (не рисование), чтобы можно было ресайзить картинку
+    canvas.isDrawingMode = false;
+    canvas.hoverCursor = 'move';
+    canvas.defaultCursor = 'default';
+    canvas.skipTargetFind = false;
+    // На случай зафиксированного курсора из инлайновых стилей – позволим Fabric управлять курсором
+    try {
+      if (canvas.upperCanvasEl && canvas.upperCanvasEl.style.removeProperty) {
+        canvas.upperCanvasEl.style.removeProperty('cursor');
+      }
+      if (canvas.lowerCanvasEl && canvas.lowerCanvasEl.style.removeProperty) {
+        canvas.lowerCanvasEl.style.removeProperty('cursor');
+      }
+    } catch(_) {}
   
-    function toggleMode() {
-      canvas.isDrawingMode = !canvas.isDrawingMode;
+    function updateModeUI() {
       const drawingDiv = document.querySelector('.toggle-button .drawing');
       const movingDiv = document.querySelector('.toggle-button .moving');
+      if (!drawingDiv || !movingDiv) return;
       if (canvas.isDrawingMode) {
         drawingDiv.style.backgroundColor = '#fff';
         movingDiv.style.backgroundColor = 'transparent';
+        canvas.hoverCursor = 'crosshair';
       } else {
         drawingDiv.style.backgroundColor = 'transparent';
         movingDiv.style.backgroundColor = '#fff';
+        canvas.hoverCursor = 'move';
       }
+      try { if (canvas.upperCanvasEl) canvas.upperCanvasEl.style.cursor = canvas.hoverCursor; } catch(_) {}
+    }
+
+    function toggleMode() {
+      canvas.isDrawingMode = !canvas.isDrawingMode;
+      updateModeUI();
     }
   
     function addText() {
@@ -224,18 +246,135 @@
       // Очищаем все объекты и фон
       canvas.clear();
   
-      // Создаём fabric.Image с нужным масштабом
+      // Добавляем изображение как объект на канвас с возможностью ресайза
       fabric.Image.fromURL(originalImageData.src, function(fabricImage) {
-        // Если картинка меньше экрана — scaleX/scaleY = 1, иначе уменьшаем
+        // Начальный масштаб: 70% ширины доступной области
+        const imageScaleX = scale * 0.7;
+        const imageScaleY = imageScaleX;
         fabricImage.set({
           left: 0,
           top: 0,
-          scaleX: scale,
-          scaleY: scale,
-          selectable: false,
-          evented: false
+          scaleX: imageScaleX,
+          scaleY: imageScaleY,
+          selectable: true,
+          evented: true,
+          lockRotation: true,
+          lockScalingFlip: true,
+          hasBorders: true,
+          hasControls: true,
+          transparentCorners: false,
+          cornerStyle: 'rect',
+          cornerColor: '#3b82f6',
+          cornerStrokeColor: '#ffffff',
+          cornerStrokeWidth: 2,
+          borderColor: '#3b82f6',
+          borderScaleFactor: 2,
+          cornerSize: 14
         });
-        canvas.setBackgroundImage(fabricImage, canvas.renderAll.bind(canvas));
+        // Скрыть контроль вращения, оставить только ручки изменения размера
+        if (fabricImage.setControlsVisibility) {
+          fabricImage.setControlsVisibility({
+            mtr: false,
+            tl: false, tr: false, bl: false, br: false,
+            mt: false, mb: false,
+            ml: false, mr: false
+          });
+        }
+
+        // Кастомный рендер боковых ручек: короткие синие полоски внутри изображения
+        const renderBlueSideBar = function(ctx, left, top, styleOverride, fabricObject, control) {
+          ctx.save();
+          // смещение внутрь изображения, чтобы ручка была внутри, а не снаружи
+          const inset = 6; // px внутрь
+          const w = 6;     // толщина полоски
+          const h = 28;    // длина полоски
+          // Сместим центр полоски внутрь объекта
+          if (control === fabricObject.controls.ml) {
+            left += inset;
+          } else if (control === fabricObject.controls.mr) {
+            left -= inset;
+          }
+          ctx.translate(left, top);
+          ctx.fillStyle = '#3b82f6';
+          const r = 3; // радиус скругления
+          const x = -w / 2;
+          const y = -h / 2;
+          const width = w;
+          const height = h;
+          // Отрисовка скругленного прямоугольника
+          ctx.beginPath();
+          ctx.moveTo(x + r, y);
+          ctx.lineTo(x + width - r, y);
+          ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+          ctx.lineTo(x + width, y + height - r);
+          ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+          ctx.lineTo(x + r, y + height);
+          ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+          ctx.lineTo(x, y + r);
+          ctx.quadraticCurveTo(x, y, x + r, y);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        };
+
+        // Настроим только боковые контролы с горизонтальным ресайзом
+        fabricImage.controls.ml = new fabric.Control({
+          x: -0.5, y: 0,
+          cursorStyle: 'ew-resize',
+          actionHandler: fabric.controlsUtils.scalingX,
+          render: renderBlueSideBar,
+          // увеличить зону тапа, полоска останется узкой, но хитбокс шире
+          sizeX: 28, sizeY: 48
+        });
+        fabricImage.controls.mr = new fabric.Control({
+          x: 0.5, y: 0,
+          cursorStyle: 'ew-resize',
+          actionHandler: fabric.controlsUtils.scalingX,
+          render: renderBlueSideBar,
+          sizeX: 28, sizeY: 48
+        });
+
+        canvas.add(fabricImage);
+        // Центрируем изображение внутри канваса
+        try {
+          const imgW = fabricImage.getScaledWidth();
+          const imgH = fabricImage.getScaledHeight();
+          const cnvW = canvas.getWidth();
+          const cnvH = canvas.getHeight();
+          fabricImage.set({
+            left: Math.max(0, (cnvW - imgW) / 2),
+            top: Math.max(0, (cnvH - imgH) / 2)
+          });
+        } catch(_) {}
+        canvas.sendToBack(fabricImage);
+        canvas.setActiveObject(fabricImage);
+        canvas.requestRenderAll();
+
+        // Появление ручек по наведению с задержкой скрытия
+        (function attachHoverHandles(img){
+          let hideTimer = null;
+          const show = () => {
+            if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+            // Активируем объект, чтобы Fabric отрисовал контролы
+            try { canvas.setActiveObject(img); } catch(_) {}
+            if (img.setControlsVisibility) img.setControlsVisibility({ ml: true, mr: true });
+            canvas.requestRenderAll();
+          };
+          const scheduleHide = () => {
+            if (hideTimer) clearTimeout(hideTimer);
+            hideTimer = setTimeout(() => {
+              if (img.setControlsVisibility) img.setControlsVisibility({ ml: false, mr: false });
+              canvas.requestRenderAll();
+            }, 200);
+          };
+          canvas.on('mouse:over', function(e){ if (e && e.target === img) show(); });
+          canvas.on('mouse:out', function(e){ if (e && e.target === img) scheduleHide(); });
+          img.on('selected', show);
+          img.on('deselected', scheduleHide);
+          // Во время изменения масштаба – ручки остаются у краёв (Fabric сам рассчитывает), сохраняем масштаб после завершения
+          img.on('scaling', () => { if (img.setControlsVisibility) img.setControlsVisibility({ ml: true, mr: true }); });
+          img.on('modified', () => {});
+        })(fabricImage);
       }, { crossOrigin: 'anonymous' });
     }
   
@@ -245,6 +384,17 @@
         setCanvasAndBackgroundImage();
       }
     });
+
+    // Всегда выбирать объекты по клику (на случай если активность сбросилась)
+    canvas.on('mouse:down', function(e) {
+      if (!canvas.isDrawingMode && e && e.target) {
+        canvas.setActiveObject(e.target);
+        canvas.requestRenderAll();
+      }
+    });
+
+    // Инициализировать UI состояния режима после создания canvas
+    updateModeUI();
   </script>
   
   <!-- Code injected by live-server -->

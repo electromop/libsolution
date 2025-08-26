@@ -154,7 +154,7 @@ class TimelineManager {
       if (isNaN(dt)) return closePopup();
       // Обновляем метку в документе
       const pad = (n) => String(n).padStart(2, '0');
-      const label = `${pad(dt.getHours())}:${pad(dt.getMinutes())} ${pad(dt.getDate())}.${pad(dt.getMonth()+1)}.${dt.getFullYear()}`;
+      const label = `${pad(dt.getDate())}.${pad(dt.getMonth()+1)}.${dt.getFullYear()}`;
       const iso = dt.toISOString();
       marker.setAttribute('data-ts', iso);
       const textEl = marker.querySelector('.tm-text');

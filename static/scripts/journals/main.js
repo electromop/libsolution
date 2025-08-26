@@ -216,7 +216,7 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addTimelineMarker = function() {
         const now = new Date();
         const pad = (n) => String(n).padStart(2, '0');
-        const label = `${pad(now.getHours())}:${pad(now.getMinutes())} ${pad(now.getDate())}.${pad(now.getMonth()+1)}.${now.getFullYear()}`;
+        const label = `${pad(now.getDate())}.${pad(now.getMonth()+1)}.${now.getFullYear()}`;
         const ts = now.toISOString();
         const html = `<div class="timeline-marker" data-ts="${ts}"><span class="tm-dot">●</span><span class="tm-text" contenteditable="false" style="user-select:none; caret-color:transparent;">${label}</span></div>`;
 
