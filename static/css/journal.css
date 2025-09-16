@@ -37,3 +37,55 @@
 .folder-toggle {
     cursor: pointer;
 }
+
+/* Стили для выделения текста в блоках */
+.editor-block {
+    position: relative;
+}
+
+/* Убираем синее выделение блоков - теперь выделяем только текст */
+.editor-block.block-selected {
+    /* Убираем все стили выделения блоков */
+}
+
+/* Стили для курсора выделения */
+.editor-block.selecting {
+    user-select: none;
+}
+
+.editor-block.selecting * {
+    user-select: none;
+}
+
+/* Стили для выделения текста между блоками */
+.editor-block .block-content {
+    position: relative;
+    min-height: 1.5em; /* Минимальная высота для пустых блоков */
+}
+
+/* Подсветка блока при выделении текста (очень тонкая) */
+.editor-block.has-text-selection {
+    background-color: rgba(59, 130, 246, 0.02);
+    border-radius: 2px;
+}
+
+/* Стили для контейнера выделения */
+#editor.multi-selection-mode {
+    cursor: text;
+}
+
+#editor.multi-selection-mode .editor-block {
+    cursor: text;
+}
+
+/* Убираем outline у редактируемых блоков */
+.editor-block .block-content[contenteditable="true"] {
+    outline: none;
+}
+
+/* Стили для пустых блоков */
+.editor-block .block-content:empty::before {
+    content: attr(data-placeholder);
+    color: #999;
+    font-style: italic;
+}

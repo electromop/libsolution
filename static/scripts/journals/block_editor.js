@@ -11,11 +11,15 @@ class BlockEditorManager {
         this.onBlockDelete = onBlockDelete; // callback(blockId)
         this.onBlockReorder = onBlockReorder; // callback(orderIds: string[])
         this.dragSrcEl = null;
+        
+        // Инициализируем систему выделения нескольких блоков
+        this.multiBlockSelection = new MultiBlockSelection(this);
     }
 
     clear() {
         this.container.innerHTML = "";
     }
+
 
     renderBlocks(blocks) {
         this.clear();
@@ -721,5 +725,30 @@ class BlockEditorManager {
             delColBtn.style.left = `${offsetLeft + rect.width - delColBtn.offsetWidth / 2}px`;
             delColBtn.style.top = `${offsetTop + rect.height / 2 - delColBtn.offsetHeight / 2}px`;
         }
+    }
+
+    // Методы для работы с выделением текста
+    hasMultiSelection() {
+        return this.multiBlockSelection.hasSelection();
+    }
+
+    clearMultiSelection() {
+        this.multiBlockSelection.clearSelection();
+    }
+
+    selectAllBlocks() {
+        this.multiBlockSelection.selectAllText();
+    }
+
+    deleteSelectedBlocks() {
+        this.multiBlockSelection.deleteSelection();
+    }
+
+    getSelectedText() {
+        return this.multiBlockSelection.getSelectedText();
+    }
+
+    getSelectedHTML() {
+        return this.multiBlockSelection.getSelectedHTML();
     }
 }

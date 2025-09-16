@@ -37,6 +37,37 @@ document.addEventListener("DOMContentLoaded", () => {
     window.wsBlocks = wsManager;
     window.blockEditor = blockEditor;
 
+    // Глобальные горячие клавиши для выделения блоков
+    document.addEventListener('keydown', (e) => {
+        // Ctrl+A - выделить все блоки
+        if (e.ctrlKey && e.key === 'a' && !e.shiftKey) {
+            e.preventDefault();
+            if (blockEditor && blockEditor.selectAllBlocks) {
+                blockEditor.selectAllBlocks();
+            }
+        }
+        
+        // Ctrl+C - копировать выделенный текст
+        if (e.ctrlKey && e.key === 'c' && !e.shiftKey) {
+            if (blockEditor && blockEditor.hasMultiSelection && blockEditor.hasMultiSelection()) {
+                e.preventDefault();
+                blockEditor.copySelectedText();
+            }
+        }
+        
+        // Delete - удалить выделенные блоки
+        if (e.key === 'Delete' && blockEditor && blockEditor.hasMultiSelection && blockEditor.hasMultiSelection()) {
+            e.preventDefault();
+            blockEditor.deleteSelectedBlocks();
+        }
+        
+        // Escape - снять выделение
+        if (e.key === 'Escape' && blockEditor && blockEditor.hasMultiSelection && blockEditor.hasMultiSelection()) {
+            e.preventDefault();
+            blockEditor.clearMultiSelection();
+        }
+    });
+
     // Lazy loading изображений: после каждого рендера блоков и при скролле
     function initLazyImages(root = document) {
         try {

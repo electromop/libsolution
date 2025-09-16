@@ -43,6 +43,8 @@ async def journal_page(request: Request, journal_id: int, current_user: dict = D
     if not user_can_read_document(current_user["id"], journal_id):
         raise HTTPException(status_code=403, detail="Доступ запрещён")
     content = get_journal_content(journal_id)
+    if content == 0:
+        return RedirectResponse(url="/journals", status_code=303)
     tags = get_journal_tags(journal_id)
     title = get_journal_title(journal_id)
     return templates.TemplateResponse("pages/index_journals.html", {
@@ -380,8 +382,8 @@ async def upload_journal_image(
 # --- Delete journal ---
 @router.delete("/api/journals/{journal_id}")
 async def api_delete_journal(journal_id: int, current_user: dict = Depends(get_current_user)):
-    # if not user_can_edit_document(current_user["id"], journal_id):
-    #     raise HTTPException(status_code=403, detail="Нет прав")
+    if not user_can_edit_document(current_user["id"], journal_id):
+        raise HTTPException(status_code=403, detail="Нет прав")
     db = SessionLocal()
     try:
         # Удаляем все связанные записи, кроме пользователя

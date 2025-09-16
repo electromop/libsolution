@@ -17,12 +17,8 @@ def get_journal_content(journal_id: int):
         # Если блоков нет, пробуем вернуть устаревшее содержимое из поля content
         doc = db.query(Document).filter(Document.id == journal_id).first()
         if not doc:
-            doc = Document(id=journal_id, filename="")
-            db.add(doc)
-            db.commit()
-            content = ""
-        else:
-            content = doc.content or ""
+            db.close()
+            return 0
     else:
         # Конкатенируем HTML блоков в одно содержимое
         html_parts = []
@@ -35,7 +31,6 @@ def get_journal_content(journal_id: int):
         content = "".join(html_parts)
 
     db.close()
-    print(f"\nget_journal_content: {content}")
     return content
 
 def save_journal_content(journal_id: int, content: str):
@@ -496,11 +491,13 @@ def user_can_read_document(user_id: str, document_id: int) -> bool:
 
 def user_can_edit_document(user_id: str, document_id: int) -> bool:
     db = SessionLocal()
+    print(f"\nuser_can_edit_document: {user_id}, {document_id}")
     try:
         acc = db.query(DocumentAccess).filter(
             DocumentAccess.document_id == document_id,
             DocumentAccess.user_id == user_id,
         ).first()
+        print(f"\nuser_can_edit_document: {acc}")
         return bool(acc and (acc.can_edit or acc.is_owner))
     finally:
         db.close()
